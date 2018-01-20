@@ -1,14 +1,34 @@
 #!/usr/bin/env python2
 
+import collections
+import intervaltree
+import re
 import sys
 
 # Configure the path to pybam
 sys.path.append('./pybam/')
 import pybam
 
-bam_files = sys.argv[1:]
+gtf_file = sys.argv[1]
+bam_files = sys.argv[2:]
 
-bam_parsers = [pybam.read(bam_file, ['sam_qname', 'sam_pos1', 'sam_cigar_string', 'sam_tags_list']) for bam_file in bam_files]
+gene_names = collections.defaultdict(intervaltree.IntervalTree)
+exons = collections.defaultdict(intervaltree.IntervalTree)
+with open(gtf_file, 'r') as f:
+    for line in f:
+        if "gene_type protein_coding" not in line:
+            next
+        t = line.strip().split("\t")
+        if t[2] == "gene":
+            i1 = t[8].find('gene_name')
+            i2 = t[8].find(';', i1)
+            gn = t[8][i1+9:i2].strip()
+            gene_names[t[0]][int(t[3]):(int(t[4])+1)] = gn
+        elif (t[2] == "exon") and ("transcript_type protein_coding" in line):
+            exons[t[0]][int(t[3]):(int(t[4])+1)] = 1
+
+
+bam_parsers = [pybam.read(bam_file, ['sam_qname', 'sam_rname', 'sam_pos1', 'sam_cigar_string', 'sam_cigar_list', 'sam_tags_list']) for bam_file in bam_files]
 
 
 # Input: iterator (...data..., tags)
@@ -23,6 +43,12 @@ def discard_non_unique_mappings(bam_parser):
             NM_value = [t[2] for t in read[-1] if t[0] == 'NM'][0]  # Assumes the tag is always present
             yield (read[:-1] + (NM_value,))
 
+def only_exonic_mappings(bam_parser):
+    for read in bam_parser:
+        (read_name, chrom_name, start_pos, _, cigar_list, _) = read
+        end_pos = start_pos + mapping_length(cigar_list) - 1
+        if exons[chrom_name][start_pos:(end_pos+1)]:
+            yield read
 
 # Input: iterator (read_name, ...data...)
 # Output: iterator (read_name, (...data1...), (...data2...))
@@ -62,6 +88,22 @@ def merged_iterators(input_parsers):
                     active_bam_parsers -= 1
 
 
+def mapping_length(cigar_list):
+    return sum(-n if c == 'I' else n for (n, c) in cigar_list)
+
+def select_same_gene(group_iterator):
+    for mappings in group_iterator:
+        genes_seen = set()
+        for pair in mappings[1]:
+            if pair is not None:
+                for (chrom_name, start_pos, _, cigar_list, _) in pair:
+                    end_pos = start_pos + mapping_length(cigar_list) - 1
+                    names_here = [i.data for i in gene_names[chrom_name][start_pos:(end_pos+1)]]
+                    genes_seen.update(names_here)
+        if len(genes_seen) == 1:
+            yield mappings
+
+
 n = 0
 #for (read_name, start_pos, cigar_string, tags) in bam_parsers[0]:
     #print (read_name, start_pos, cigar_string, tags)
@@ -72,16 +114,21 @@ n = 0
     #if n == 5:
         #break
 
-for (read_name,mappings) in merged_iterators([paired_reads_parser(discard_non_unique_mappings(p)) for p in bam_parsers]):
+#for (read_name,mappings) in select_same_gene(merged_iterators([paired_reads_parser(only_exonic_mappings(discard_non_unique_mappings(p))) for p in bam_parsers])):
+for (read_name,mappings) in select_same_gene(merged_iterators([paired_reads_parser(discard_non_unique_mappings(p)) for p in bam_parsers])):
+#for (names,(read_name,mappings)) in select_same_gene(merged_iterators([paired_reads_parser(discard_non_unique_mappings(p)) for p in bam_parsers])):
+#for (read_name,mappings) in merged_iterators([paired_reads_parser(discard_non_unique_mappings(p)) for p in bam_parsers]):
     line = [read_name]
     for m in mappings:
         if m is None:
             line.extend(['NA'] * 6)
         else:
-            line.extend(m[0])
-            line.extend(m[1])
+            line.extend(m[0][x] for x in (1,2,4))
+            line.extend(m[1][x] for x in (1,2,4))
+    #print names
     print "\t".join(map(str,line))
+    #print
     #n += 1
-    #if n == 5:
+    #if n == 100000:
         #break
 
