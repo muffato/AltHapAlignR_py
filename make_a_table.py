@@ -28,14 +28,22 @@ parser.add_option("-t", "--transcript_types", dest = 'transcript_types', default
 
 gtf_file = args[0]
 bam_files = args[1:]
+print >> sys.stderr, "BAM+GTF merger for AltHapAlign called with these options"
+print >> sys.stderr, "\tgtf_file:", gtf_file
+print >> sys.stderr, "\tbam_files:", bam_files
+print >> sys.stderr, "\toptions:", options
+print >> sys.stderr
 
 
+print >> sys.stderr, "Loading the GTF file ... ",
 gene_type_filter = re.compile("gene_type (%s);" % options.gene_types.replace(",", "|")) if options.gene_types else None
 transcript_type_filter = re.compile("transcript_type (%s);" % options.transcript_types.replace(",", "|")) if options.transcript_types else None
 gene_renames = dict(options.gene_renames) if options.gene_renames else {}
 
 gene_names = collections.defaultdict(intervaltree.IntervalTree)
 exons = collections.defaultdict(quicksect.IntervalTree if has_quicksect else intervaltree.IntervalTree)
+n_genes = 0
+n_exons = 0
 with open(gtf_file, 'r') as f:
     for line in f:
         t = line.strip().split("\t")
@@ -46,6 +54,7 @@ with open(gtf_file, 'r') as f:
             i2 = t[8].find(';', i1)
             gn = t[8][i1+9:i2].strip()
             gene_names[t[0]][int(t[3]):(int(t[4])+1)] = gene_renames.get(gn, gn)
+            n_genes += 1
         elif t[2] == "exon":
             if transcript_type_filter and not transcript_type_filter.search(t[8]):
                 continue
@@ -53,9 +62,13 @@ with open(gtf_file, 'r') as f:
                 exons[t[0]].add(int(t[3]), int(t[4])+1)
             else:
                 exons[t[0]][int(t[3]):(int(t[4])+1)] = 1
+            n_exons += 1
+print >> sys.stderr, n_genes, "genes and", n_exons, "exons"
 
 
+print >> sys.stderr, "Opening the BAM files ...",
 bam_parsers = [pybam.read(bam_file, ['sam_qname', 'sam_rname', 'sam_pos1', 'sam_cigar_string', 'sam_cigar_list', 'sam_tags_list']) for bam_file in bam_files]
+print >> sys.stderr, " Done"
 
 
 # Input: BAM iterator (with tag list)
@@ -145,6 +158,8 @@ def select_same_gene(group_iterator):
             yield (read_name, genes_seen.pop(), mappings)
 
 
+n_groups = 0
+print >> sys.stderr, "Reading the BAM files ..."
 for (read_name, gene_name, mappings) in select_same_gene(merged_iterators([paired_reads_parser(only_exonic_mappings(discard_non_unique_mappings(p))) for p in bam_parsers])):
     line = [read_name, gene_name]
     for m in mappings:
@@ -154,7 +169,8 @@ for (read_name, gene_name, mappings) in select_same_gene(merged_iterators([paire
             line.append(m[0][4])
             line.append(m[1][4])
     print "\t".join(map(str,line))
-    #n += 1
-    #if n == 100000:
-        #break
+    n_groups += 1
+    if not n_groups % 10000:
+        print >> sys.stderr, n_groups, "groups"
+print >> sys.stderr, "Finished reading the BAM files:", n_groups, "groups in total"
 
