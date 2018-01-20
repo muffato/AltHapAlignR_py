@@ -31,8 +31,8 @@ with open(gtf_file, 'r') as f:
 bam_parsers = [pybam.read(bam_file, ['sam_qname', 'sam_rname', 'sam_pos1', 'sam_cigar_string', 'sam_cigar_list', 'sam_tags_list']) for bam_file in bam_files]
 
 
-# Input: iterator (...data..., tags)
-# Output: iterator (...data..., NM_tag)
+# Input: BAM iterator (with tag list)
+# Output: BAM iterator (with the value of the NM tag instead of the tag list)
 # Description: Discards the read that are not uniquely mapped (i.e. don't
 #              have NH:i:1). Also replaces the tag list with the value of
 #              the NM tag.
@@ -43,12 +43,17 @@ def discard_non_unique_mappings(bam_parser):
             NM_value = [t[2] for t in read[-1] if t[0] == 'NM'][0]  # Assumes the tag is always present
             yield (read[:-1] + (NM_value,))
 
+
+# Input: BAM iterator
+# Output: BAM iterator
+# Description: Discards the reads that do not overlap any exons
 def only_exonic_mappings(bam_parser):
     for read in bam_parser:
         (read_name, chrom_name, start_pos, _, cigar_list, _) = read
         end_pos = start_pos + mapping_length(cigar_list) - 1
         if exons[chrom_name][start_pos:(end_pos+1)]:
             yield read
+
 
 # Input: iterator (read_name, ...data...)
 # Output: iterator (read_name, [(...data1...), (...data2...)])
@@ -88,9 +93,18 @@ def merged_iterators(input_parsers):
                     active_bam_parsers -= 1
 
 
+# Input: CIGAR alignment already parsed to a list of (number, character)
+# Output: integer
+# Description: Computes the length of the alignment on the genome
 def mapping_length(cigar_list):
     return sum(-n if c == 'I' else n for (n, c) in cigar_list)
 
+
+# Input: iterator (read_name, [data1 | None, data2 | None, ...])
+# Output: iterator (read_name, [data1 | None, data2 | None, ...])
+# Description: For each group of reads, finds the gene names on the genome
+#              (using the alignment) and only keeps the groups that map to
+#              a single gene name.
 def select_same_gene(group_iterator):
     for mappings in group_iterator:
         genes_seen = set()
