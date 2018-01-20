@@ -145,20 +145,7 @@ def select_same_gene(group_iterator):
             yield (read_name, genes_seen.pop(), mappings)
 
 
-n = 0
-#for (read_name, start_pos, cigar_string, tags) in bam_parsers[0]:
-    #print (read_name, start_pos, cigar_string, tags)
-#for g in paired_reads_parser(discard_non_unique_mappings(bam_parsers[0])):
-#for g in merged_iterators([paired_reads_parser(discard_non_unique_mappings(p)) for p in bam_parsers]):
-    #print g
-    #n += 1
-    #if n == 5:
-        #break
-
-#for (read_name,mappings) in select_same_gene(merged_iterators([paired_reads_parser(only_exonic_mappings(discard_non_unique_mappings(p))) for p in bam_parsers])):
 for (read_name, gene_name, mappings) in select_same_gene(merged_iterators([paired_reads_parser(only_exonic_mappings(discard_non_unique_mappings(p))) for p in bam_parsers])):
-#for (names,(read_name,mappings)) in select_same_gene(merged_iterators([paired_reads_parser(discard_non_unique_mappings(p)) for p in bam_parsers])):
-#for (read_name,mappings) in merged_iterators([paired_reads_parser(discard_non_unique_mappings(p)) for p in bam_parsers]):
     line = [read_name, gene_name]
     for m in mappings:
         if m is None:
@@ -166,9 +153,7 @@ for (read_name, gene_name, mappings) in select_same_gene(merged_iterators([paire
         else:
             line.append(m[0][4])
             line.append(m[1][4])
-    #print names
     print "\t".join(map(str,line))
-    #print
     #n += 1
     #if n == 100000:
         #break
