@@ -1,10 +1,9 @@
 #!/usr/bin/env python2
 
+import sys
 
 # Configure the path to pybam
-import sys
 sys.path.append('./pybam/')
-
 import pybam
 
 bam_files = sys.argv[1:]
