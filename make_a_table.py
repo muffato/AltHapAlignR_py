@@ -5,6 +5,13 @@ import intervaltree
 import re
 import sys
 
+# quicksect is much faster than intervaltree, but harder to install
+has_quicksect = True
+try:
+    import quicksect
+except ImportError:
+    has_quicksect = False
+
 # Configure the path to pybam
 sys.path.append('./pybam/')
 import pybam
@@ -13,7 +20,7 @@ gtf_file = sys.argv[1]
 bam_files = sys.argv[2:]
 
 gene_names = collections.defaultdict(intervaltree.IntervalTree)
-exons = collections.defaultdict(intervaltree.IntervalTree)
+exons = collections.defaultdict(quicksect.IntervalTree if has_quicksect else intervaltree.IntervalTree)
 with open(gtf_file, 'r') as f:
     for line in f:
         if "gene_type protein_coding" not in line:
@@ -25,7 +32,10 @@ with open(gtf_file, 'r') as f:
             gn = t[8][i1+9:i2].strip()
             gene_names[t[0]][int(t[3]):(int(t[4])+1)] = gn
         elif (t[2] == "exon") and ("transcript_type protein_coding" in line):
-            exons[t[0]][int(t[3]):(int(t[4])+1)] = 1
+            if has_quicksect:
+                exons[t[0]].add(int(t[3]), int(t[4])+1)
+            else:
+                exons[t[0]][int(t[3]):(int(t[4])+1)] = 1
 
 
 bam_parsers = [pybam.read(bam_file, ['sam_qname', 'sam_rname', 'sam_pos1', 'sam_cigar_string', 'sam_cigar_list', 'sam_tags_list']) for bam_file in bam_files]
@@ -51,7 +61,7 @@ def only_exonic_mappings(bam_parser):
     for read in bam_parser:
         (read_name, chrom_name, start_pos, _, cigar_list, _) = read
         end_pos_plus_1 = start_pos + mapping_length(cigar_list)
-        if exons[chrom_name][start_pos:end_pos_plus_1]:
+        if exons[chrom_name].search(start_pos, end_pos_plus_1):
             yield read
 
 
