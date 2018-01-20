@@ -18,6 +18,8 @@ sys.path.append('./pybam/')
 import pybam
 
 parser = optparse.OptionParser(usage = "usage: %prog [options] gtf_file bam_file_1 bam_file_2 ...")
+parser.add_option("-r", "--rename_gene", nargs = 2, action = 'append', dest = 'gene_renames', metavar = 'NAME_TO_REPLACE NEW_NAME',
+        help = 'Replace some erroneous gene names')
 parser.add_option("-g", "--gene_types", dest = 'gene_types', default = 'protein_coding',
         help = 'Comma-separated list of gene biotypes to use [default: %default]. Use an empty string for no filtering')
 parser.add_option("-t", "--transcript_types", dest = 'transcript_types', default = 'protein_coding',
@@ -27,8 +29,10 @@ parser.add_option("-t", "--transcript_types", dest = 'transcript_types', default
 gtf_file = args[0]
 bam_files = args[1:]
 
+
 gene_type_filter = re.compile("gene_type (%s);" % options.gene_types.replace(",", "|")) if options.gene_types else None
 transcript_type_filter = re.compile("transcript_type (%s);" % options.transcript_types.replace(",", "|")) if options.transcript_types else None
+gene_renames = dict(options.gene_renames) if options.gene_renames else {}
 
 gene_names = collections.defaultdict(intervaltree.IntervalTree)
 exons = collections.defaultdict(quicksect.IntervalTree if has_quicksect else intervaltree.IntervalTree)
@@ -41,7 +45,7 @@ with open(gtf_file, 'r') as f:
             i1 = t[8].find('gene_name')
             i2 = t[8].find(';', i1)
             gn = t[8][i1+9:i2].strip()
-            gene_names[t[0]][int(t[3]):(int(t[4])+1)] = gn
+            gene_names[t[0]][int(t[3]):(int(t[4])+1)] = gene_renames.get(gn, gn)
         elif t[2] == "exon":
             if transcript_type_filter and not transcript_type_filter.search(t[8]):
                 continue
