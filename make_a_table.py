@@ -5,6 +5,7 @@ import intervaltree
 import optparse
 import re
 import sys
+import time
 
 # quicksect is much faster than intervaltree, but harder to install
 has_quicksect = True
@@ -33,6 +34,14 @@ print >> sys.stderr, "\tgtf_file:", gtf_file
 print >> sys.stderr, "\tbam_files:", bam_files
 print >> sys.stderr, "\toptions:", options
 print >> sys.stderr
+
+ref_time = time.time()
+def get_elapsed():
+    time_now = time.time()
+    global ref_time
+    elapsed = time_now - ref_time
+    ref_time = time_now
+    return elapsed
 
 
 print >> sys.stderr, "Loading the GTF file ... ",
@@ -63,13 +72,14 @@ with open(gtf_file, 'r') as f:
             else:
                 exons[t[0]][int(t[3]):(int(t[4])+1)] = 1
             n_exons += 1
-print >> sys.stderr, n_genes, "genes and", n_exons, "exons"
+print >> sys.stderr, "Done (%.2f seconds): %d genes and %d exons" % (get_elapsed(), n_genes, n_exons)
 
 
 print >> sys.stderr, "Opening the BAM files ...",
 bam_parsers = [pybam.read(bam_file, ['sam_qname', 'sam_rname', 'sam_pos1', 'sam_cigar_string', 'sam_cigar_list', 'sam_tags_list']) for bam_file in bam_files]
-print >> sys.stderr, " Done"
+print >> sys.stderr, " Done (%.2f seconds)" % (get_elapsed(),)
 
+n_bam_aligns = 0
 
 # Input: BAM iterator (with tag list)
 # Output: BAM iterator (with the value of the NM tag instead of the tag list)
@@ -78,6 +88,8 @@ print >> sys.stderr, " Done"
 #              the NM tag.
 def discard_non_unique_mappings(bam_parser):
     for read in bam_parser:
+        global n_bam_aligns
+        n_bam_aligns += 1
         NH_value = [t[2] for t in read[-1] if t[0] == 'NH'][0]  # Assumes the tag is always present
         if NH_value == 1:
             NM_value = [t[2] for t in read[-1] if t[0] == 'NM'][0]  # Assumes the tag is always present
@@ -159,6 +171,8 @@ def select_same_gene(group_iterator):
 
 
 n_groups = 0
+last_n_bam_aligns = 0
+partial_time = ref_time
 print >> sys.stderr, "Reading the BAM files ..."
 for (read_name, gene_name, mappings) in select_same_gene(merged_iterators([paired_reads_parser(only_exonic_mappings(discard_non_unique_mappings(p))) for p in bam_parsers])):
     line = [read_name, gene_name]
@@ -171,6 +185,8 @@ for (read_name, gene_name, mappings) in select_same_gene(merged_iterators([paire
     print "\t".join(map(str,line))
     n_groups += 1
     if not n_groups % 10000:
-        print >> sys.stderr, n_groups, "groups"
-print >> sys.stderr, "Finished reading the BAM files:", n_groups, "groups in total"
+        print >> sys.stderr, "Found %d paired reads across all BAM files (%d raw reads processed -- %.2f per second)" % (n_groups, n_bam_aligns, (n_bam_aligns-last_n_bam_aligns)/get_elapsed())
+        last_n_bam_aligns = n_bam_aligns
+ref_time = partial_time
+print >> sys.stderr, "Finished reading the BAM files in %.2f seconds: %d paired reads in total" % (get_elapsed(), n_groups)
 
