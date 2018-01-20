@@ -133,16 +133,16 @@ def mapping_length(cigar_list):
 #              (using the alignment) and only keeps the groups that map to
 #              a single gene name.
 def select_same_gene(group_iterator):
-    for mappings in group_iterator:
+    for (read_name, mappings) in group_iterator:
         genes_seen = set()
-        for pair in mappings[1]:
+        for pair in mappings:
             if pair is not None:
                 for (chrom_name, start_pos, _, cigar_list, _) in pair:
                     end_pos_plus_1 = start_pos + mapping_length(cigar_list)
                     names_here = [i.data for i in gene_names[chrom_name][start_pos:end_pos_plus_1]]
                     genes_seen.update(names_here)
         if len(genes_seen) == 1:
-            yield mappings
+            yield (read_name, genes_seen.pop(), mappings)
 
 
 n = 0
@@ -156,10 +156,10 @@ n = 0
         #break
 
 #for (read_name,mappings) in select_same_gene(merged_iterators([paired_reads_parser(only_exonic_mappings(discard_non_unique_mappings(p))) for p in bam_parsers])):
-for (read_name,mappings) in select_same_gene(merged_iterators([paired_reads_parser(discard_non_unique_mappings(p)) for p in bam_parsers])):
+for (read_name, gene_name, mappings) in select_same_gene(merged_iterators([paired_reads_parser(only_exonic_mappings(discard_non_unique_mappings(p))) for p in bam_parsers])):
 #for (names,(read_name,mappings)) in select_same_gene(merged_iterators([paired_reads_parser(discard_non_unique_mappings(p)) for p in bam_parsers])):
 #for (read_name,mappings) in merged_iterators([paired_reads_parser(discard_non_unique_mappings(p)) for p in bam_parsers]):
-    line = [read_name]
+    line = [read_name, gene_name]
     for m in mappings:
         if m is None:
             line.extend(['NA'] * 6)
