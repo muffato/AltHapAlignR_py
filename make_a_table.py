@@ -2,6 +2,7 @@
 
 import collections
 import intervaltree
+import optparse
 import re
 import sys
 
@@ -16,22 +17,34 @@ except ImportError:
 sys.path.append('./pybam/')
 import pybam
 
-gtf_file = sys.argv[1]
-bam_files = sys.argv[2:]
+parser = optparse.OptionParser(usage = "usage: %prog [options] gtf_file bam_file_1 bam_file_2 ...")
+parser.add_option("-g", "--gene_types", dest = 'gene_types', default = 'protein_coding',
+        help = 'Comma-separated list of gene biotypes to use [default: %default]. Use an empty string for no filtering')
+parser.add_option("-t", "--transcript_types", dest = 'transcript_types', default = 'protein_coding',
+        help = 'Comma-separated list of transcript biotypes to use for the exon-overlap filtering [default: %default]. Use an empty string for no filtering')
+(options, args) = parser.parse_args()
+
+gtf_file = args[0]
+bam_files = args[1:]
+
+gene_type_filter = re.compile("gene_type (%s);" % options.gene_types.replace(",", "|")) if options.gene_types else None
+transcript_type_filter = re.compile("transcript_type (%s);" % options.transcript_types.replace(",", "|")) if options.transcript_types else None
 
 gene_names = collections.defaultdict(intervaltree.IntervalTree)
 exons = collections.defaultdict(quicksect.IntervalTree if has_quicksect else intervaltree.IntervalTree)
 with open(gtf_file, 'r') as f:
     for line in f:
-        if "gene_type protein_coding" not in line:
-            next
         t = line.strip().split("\t")
+        if gene_type_filter and not gene_type_filter.search(t[8]):
+            continue
         if t[2] == "gene":
             i1 = t[8].find('gene_name')
             i2 = t[8].find(';', i1)
             gn = t[8][i1+9:i2].strip()
             gene_names[t[0]][int(t[3]):(int(t[4])+1)] = gn
-        elif (t[2] == "exon") and ("transcript_type protein_coding" in line):
+        elif t[2] == "exon":
+            if transcript_type_filter and not transcript_type_filter.search(t[8]):
+                continue
             if has_quicksect:
                 exons[t[0]].add(int(t[3]), int(t[4])+1)
             else:
