@@ -11,8 +11,8 @@ bam_files = sys.argv[1:]
 bam_parsers = [pybam.read(bam_file, ['sam_qname', 'sam_pos1', 'sam_cigar_string', 'sam_tags_list']) for bam_file in bam_files]
 
 
-# Input: iterator (read_name, start_pos, cigar_string, tags)
-# Output: iterator (read_name, start_pos, cigar_string, NM_tag)
+# Input: iterator (...data..., tags)
+# Output: iterator (...data..., NM_tag)
 # Description: Discards the read that are not uniquely mapped (i.e. don't
 #              have NH:i:1). Also replaces the tag list with the value of
 #              the NM tag.
@@ -42,8 +42,8 @@ def paired_reads_parser(bam_parser):
         read_count += 1
 
 
-# Input: list of iterators (read_name, (...data1...), (...data2...))
-# Output: iterator (read_name, [iterator_index, (...data1...), (...data2...)})
+# Input: list of iterators (read_name, ...data...)
+# Output: iterator (read_name, [...data...])
 # Description: For each read name, groups the reads from each BAM file,
 #              assuming that the files are sorted by read name
 def merged_iterators(input_parsers):
