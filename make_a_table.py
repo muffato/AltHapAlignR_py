@@ -56,16 +56,16 @@ def only_exonic_mappings(bam_parser):
 #              Singletons and reads mapping to 3 or more times are thus
 #              discarded.  This assumes that the input BAM file is sorted
 def paired_reads_parser(bam_parser):
-    last_read = None
-    read_count = 0
+    last_reads = []
+    last_read_name = None
     for read in bam_parser:
         # Same read as last time
-        if (last_read is None) or (last_read[0] != read[0]):
-            if read_count == 2:
-                yield (read[0], last_read[1:], read[1:])
-            read_count = 0
-        last_read = read
-        read_count += 1
+        if (len(last_reads) == 0) or (last_read_name != read[0]):
+            if len(last_reads) == 2:
+                yield ((last_read_name,) + tuple(last_reads))
+            last_reads = []
+            last_read_name = read[0]
+        last_reads.append(read[1:])
 
 
 # Input: list of iterators (read_name, ...data...)
