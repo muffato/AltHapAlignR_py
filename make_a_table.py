@@ -50,8 +50,8 @@ def discard_non_unique_mappings(bam_parser):
 def only_exonic_mappings(bam_parser):
     for read in bam_parser:
         (read_name, chrom_name, start_pos, _, cigar_list, _) = read
-        end_pos = start_pos + mapping_length(cigar_list) - 1
-        if exons[chrom_name][start_pos:(end_pos+1)]:
+        end_pos_plus_1 = start_pos + mapping_length(cigar_list)
+        if exons[chrom_name][start_pos:end_pos_plus_1]:
             yield read
 
 
@@ -111,8 +111,8 @@ def select_same_gene(group_iterator):
         for pair in mappings[1]:
             if pair is not None:
                 for (chrom_name, start_pos, _, cigar_list, _) in pair:
-                    end_pos = start_pos + mapping_length(cigar_list) - 1
-                    names_here = [i.data for i in gene_names[chrom_name][start_pos:(end_pos+1)]]
+                    end_pos_plus_1 = start_pos + mapping_length(cigar_list)
+                    names_here = [i.data for i in gene_names[chrom_name][start_pos:end_pos_plus_1]]
                     genes_seen.update(names_here)
         if len(genes_seen) == 1:
             yield mappings
