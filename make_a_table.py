@@ -162,10 +162,10 @@ for (read_name, gene_name, mappings) in select_same_gene(merged_iterators([paire
     line = [read_name, gene_name]
     for m in mappings:
         if m is None:
-            line.extend(['NA'] * 6)
+            line.extend(['NA'] * 2)
         else:
-            line.extend(m[0][x] for x in (1,2,4))
-            line.extend(m[1][x] for x in (1,2,4))
+            line.append(m[0][4])
+            line.append(m[1][4])
     #print names
     print "\t".join(map(str,line))
     #print
