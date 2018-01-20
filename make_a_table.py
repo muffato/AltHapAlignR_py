@@ -74,9 +74,8 @@ with open(gtf_file, 'r') as f:
             n_exons += 1
 print >> sys.stderr, "Done (%.2f seconds): %d genes and %d exons" % (get_elapsed(), n_genes, n_exons)
 
-
 print >> sys.stderr, "Opening the BAM files ...",
-bam_parsers = [pybam.read(bam_file, ['sam_qname', 'sam_rname', 'sam_pos1', 'sam_cigar_string', 'sam_cigar_list', 'sam_tags_list']) for bam_file in bam_files]
+bam_parsers = [pybam.read(bam_file, ['sam_qname', 'sam_rname', 'sam_pos1', 'sam_cigar_list', 'sam_tags_list']) for bam_file in bam_files]
 print >> sys.stderr, " Done (%.2f seconds)" % (get_elapsed(),)
 
 n_bam_aligns = 0
@@ -101,7 +100,7 @@ def discard_non_unique_mappings(bam_parser):
 # Description: Discards the reads that do not overlap any exons
 def only_exonic_mappings(bam_parser):
     for read in bam_parser:
-        (read_name, chrom_name, start_pos, _, cigar_list, _) = read
+        (read_name, chrom_name, start_pos, cigar_list, _) = read
         end_pos_plus_1 = start_pos + mapping_length(cigar_list)
         if exons[chrom_name].search(start_pos, end_pos_plus_1):
             yield read
@@ -162,7 +161,7 @@ def select_same_gene(group_iterator):
         genes_seen = set()
         for pair in mappings:
             if pair is not None:
-                for (chrom_name, start_pos, _, cigar_list, _) in pair:
+                for (chrom_name, start_pos, cigar_list, _) in pair:
                     end_pos_plus_1 = start_pos + mapping_length(cigar_list)
                     names_here = [i.data for i in gene_names[chrom_name][start_pos:end_pos_plus_1]]
                     genes_seen.update(names_here)
@@ -180,8 +179,8 @@ for (read_name, gene_name, mappings) in select_same_gene(merged_iterators([paire
         if m is None:
             line.extend(['NA'] * 2)
         else:
-            line.append(m[0][4])
-            line.append(m[1][4])
+            line.append(m[0][3])
+            line.append(m[1][3])
     print "\t".join(map(str,line))
     n_groups += 1
     if not n_groups % 10000:
