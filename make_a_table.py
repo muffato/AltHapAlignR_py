@@ -51,7 +51,7 @@ def only_exonic_mappings(bam_parser):
             yield read
 
 # Input: iterator (read_name, ...data...)
-# Output: iterator (read_name, (...data1...), (...data2...))
+# Output: iterator (read_name, [(...data1...), (...data2...)])
 # Description: Group consecutive pairs of reads that have the same name.
 #              Singletons and reads mapping to 3 or more times are thus
 #              discarded.  This assumes that the input BAM file is sorted
@@ -62,14 +62,14 @@ def paired_reads_parser(bam_parser):
         # Same read as last time
         if (len(last_reads) == 0) or (last_read_name != read[0]):
             if len(last_reads) == 2:
-                yield ((last_read_name,) + tuple(last_reads))
+                yield (last_read_name, last_reads)
             last_reads = []
             last_read_name = read[0]
         last_reads.append(read[1:])
 
 
-# Input: list of iterators (read_name, ...data...)
-# Output: iterator (read_name, [...data...])
+# Input: list of iterators (read_name, data)
+# Output: iterator (read_name, [data1 | None, data2 | None, ...])
 # Description: For each read name, groups the reads from each BAM file,
 #              assuming that the files are sorted by read name
 def merged_iterators(input_parsers):
@@ -78,7 +78,7 @@ def merged_iterators(input_parsers):
     while active_bam_parsers:
         read_names = [cr[0] for cr in current_reads if cr[0] is not None]
         next_read_name = min(read_names)
-        yield (next_read_name, [cr[1:] if cr[0] == next_read_name else None for cr in current_reads])
+        yield (next_read_name, [cr[1] if cr[0] == next_read_name else None for cr in current_reads])
         for (i, cr) in enumerate(current_reads):
             if cr[0] == next_read_name:
                 try:
