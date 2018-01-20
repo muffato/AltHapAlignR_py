@@ -100,10 +100,10 @@ def discard_non_unique_mappings(bam_parser):
 # Description: Discards the reads that do not overlap any exons
 def only_exonic_mappings(bam_parser):
     for read in bam_parser:
-        (read_name, chrom_name, start_pos, cigar_list, _) = read
+        (read_name, chrom_name, start_pos, cigar_list, NM_value) = read
         end_pos_plus_1 = start_pos + mapping_length(cigar_list)
         if exons[chrom_name].search(start_pos, end_pos_plus_1):
-            yield read
+            yield (read_name, chrom_name, start_pos, end_pos_plus_1, NM_value)
 
 
 # Input: iterator (read_name, ...data...)
@@ -161,8 +161,7 @@ def select_same_gene(group_iterator):
         genes_seen = set()
         for pair in mappings:
             if pair is not None:
-                for (chrom_name, start_pos, cigar_list, _) in pair:
-                    end_pos_plus_1 = start_pos + mapping_length(cigar_list)
+                for (chrom_name, start_pos, end_pos_plus_1, NM_value) in pair:
                     names_here = [i.data for i in gene_names[chrom_name][start_pos:end_pos_plus_1]]
                     genes_seen.update(names_here)
         if len(genes_seen) == 1:
