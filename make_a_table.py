@@ -176,10 +176,9 @@ for (read_name, gene_name, mappings) in select_same_gene(merged_iterators([paire
     line = [read_name, gene_name]
     for m in mappings:
         if m is None:
-            line.extend(['NA'] * 2)
+            line.append('NA')
         else:
-            line.append(m[0][3])
-            line.append(m[1][3])
+            line.append(m[0][3] + m[1][3])
     print "\t".join(map(str,line))
     n_groups += 1
     if not n_groups % 10000:
