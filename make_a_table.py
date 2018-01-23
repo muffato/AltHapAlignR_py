@@ -1,11 +1,18 @@
 #!/usr/bin/env python2
 
 import collections
-import intervaltree
 import optparse
 import re
 import sys
 import time
+
+# intervaltree is required but we allow pip installs and local checkouts
+try:
+    import intervaltree
+except ImportError:
+    sys.path.append('./intervaltree/')
+    sys.path.append('./sorted_containers/')
+    import intervaltree
 
 # quicksect is much faster than intervaltree, but harder to install
 has_quicksect = True
