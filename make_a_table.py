@@ -6,7 +6,7 @@ import re
 import sys
 import time
 
-# intervaltree is required but we allow pip installs and local checkouts
+# intervaltree is required but we allow both pip installs and local checkouts
 try:
     import intervaltree
 except ImportError:
@@ -14,7 +14,7 @@ except ImportError:
     sys.path.append('./sorted_containers/')
     import intervaltree
 
-# quicksect is much faster than intervaltree, but harder to install
+# quicksect is much faster than intervaltree, but harder to install, so make it optional
 has_quicksect = True
 try:
     import quicksect
