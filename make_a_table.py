@@ -175,18 +175,20 @@ def select_same_gene(group_iterator):
             yield (read_name, genes_seen.pop(), mappings)
 
 
+def toString(group_iterator):
+    for (read_name, gene_name, mappings) in group_iterator:
+        line = [read_name, gene_name]
+        for m in mappings:
+            line.append('NA' if m is None else str(m[0][3] + m[1][3]))
+        yield "\t".join(line)
+
+
 n_groups = 0
 last_n_bam_aligns = 0
 partial_time = ref_time
 print >> sys.stderr, "Reading the BAM files ..."
-for (read_name, gene_name, mappings) in select_same_gene(merged_iterators([paired_reads_parser(only_exonic_mappings(discard_non_unique_mappings(p))) for p in bam_parsers])):
-    line = [read_name, gene_name]
-    for m in mappings:
-        if m is None:
-            line.append('NA')
-        else:
-            line.append(m[0][3] + m[1][3])
-    print "\t".join(map(str,line))
+for s in toString(select_same_gene(merged_iterators([paired_reads_parser(only_exonic_mappings(discard_non_unique_mappings(p))) for p in bam_parsers]))):
+    print s
     n_groups += 1
     if not n_groups % 10000:
         print >> sys.stderr, "Found %d paired reads across all BAM files (%d raw reads processed -- %.2f per second)" % (n_groups, n_bam_aligns, (n_bam_aligns-last_n_bam_aligns)/get_elapsed())
