@@ -6,20 +6,49 @@ import re
 import sys
 import time
 
-# intervaltree is required but we allow both pip installs and local checkouts
-try:
-    import intervaltree
-except ImportError:
-    sys.path.append('./intervaltree/')
-    sys.path.append('./sorted_containers/')
-    import intervaltree
-
 # quicksect is much faster than intervaltree, but harder to install, so make it optional
-has_quicksect = True
 try:
     import quicksect
+
+    # Wrapper around quicksect.IntervalTree so that the rest of the script can work with both quicksect and intervaltree
+    class myintervaltree(quicksect.IntervalTree):
+
+        def __init__(self):
+            super(myintervaltree, self).__init__()
+            self.interval_to_data = {}
+            self.super_search = super(myintervaltree, self).search
+
+        # quicksect cannot associate intervals to data, so we need to it ourselves
+        def addi(self, start, end, data):
+            interval = quicksect.Interval(start, end)
+            self.insert( interval )
+            self.interval_to_data[ interval ] = data
+
+        def overlaps(self, start, end):
+            return self.super_search(start, end)
+
+        def search(self, start, end):
+            return [self.interval_to_data[i] for i in self.super_search(start, end)]
+
 except ImportError:
-    has_quicksect = False
+    import intervaltree
+
+    # Wrapper around intervaltree.IntervalTree so that the rest of the script can work with both quicksect and intervaltree
+    class myintervaltree(intervaltree.IntervalTree):
+
+        def __init__(self):
+            super(myintervaltree, self).__init__()
+            self.super_search = super(myintervaltree, self).search
+            self.super_addi = super(myintervaltree, self).addi
+
+        def addi(self, start, end, data):
+            self.super_addi(start, end+1, data)
+
+        def overlaps(self, start, end):
+            return self.super_search(start, end+1)
+
+        def search(self, start, end):
+            return [i.data for i in self.super_search(start, end+1)]
 
 # Configure the path to pybam
 sys.path.append('./pybam/')
@@ -56,8 +85,8 @@ gene_type_filter = re.compile("gene_type (%s);" % options.gene_types.replace(","
 transcript_type_filter = re.compile("transcript_type (%s);" % options.transcript_types.replace(",", "|")) if options.transcript_types else None
 gene_renames = dict(options.gene_renames) if options.gene_renames else {}
 
-gene_names = collections.defaultdict(intervaltree.IntervalTree)
-exons = collections.defaultdict(quicksect.IntervalTree if has_quicksect else intervaltree.IntervalTree)
+gene_names = collections.defaultdict(myintervaltree)
+exons = collections.defaultdict(myintervaltree)
 n_genes = 0
 n_exons = 0
 with open(gtf_file, 'r') as f:
@@ -69,15 +98,12 @@ with open(gtf_file, 'r') as f:
             i1 = t[8].find('gene_name')
             i2 = t[8].find(';', i1)
             gn = t[8][i1+9:i2].strip()
-            gene_names[t[0]][int(t[3]):(int(t[4])+1)] = gene_renames.get(gn, gn)
+            gene_names[t[0]].addi(int(t[3]), int(t[4]), gene_renames.get(gn, gn))
             n_genes += 1
         elif t[2] == "exon":
             if transcript_type_filter and not transcript_type_filter.search(t[8]):
                 continue
-            if has_quicksect:
-                exons[t[0]].add(int(t[3]), int(t[4])+1)
-            else:
-                exons[t[0]][int(t[3]):(int(t[4])+1)] = 1
+            exons[t[0]].addi(int(t[3]), int(t[4]), 1)
             n_exons += 1
 print >> sys.stderr, "Done (%.2f seconds): %d genes and %d exons" % (get_elapsed(), n_genes, n_exons)
 
@@ -108,9 +134,9 @@ def discard_non_unique_mappings(bam_parser):
 def only_exonic_mappings(bam_parser):
     for read in bam_parser:
         (read_name, chrom_name, start_pos, cigar_list, NM_value) = read
-        end_pos_plus_1 = start_pos + mapping_length(cigar_list)
-        if exons[chrom_name].search(start_pos, end_pos_plus_1):
-            yield (read_name, chrom_name, start_pos, end_pos_plus_1, NM_value)
+        end_pos = start_pos + mapping_length(cigar_list) - 1
+        if exons[chrom_name].overlaps(start_pos, end_pos):
+            yield (read_name, chrom_name, start_pos, end_pos, NM_value)
 
 
 # Input: iterator (read_name, ...data...)
@@ -168,8 +194,8 @@ def select_same_gene(group_iterator):
         genes_seen = set()
         for pair in mappings:
             if pair is not None:
-                for (chrom_name, start_pos, end_pos_plus_1, NM_value) in pair:
-                    names_here = [i.data for i in gene_names[chrom_name][start_pos:end_pos_plus_1]]
+                for (chrom_name, start_pos, end_pos, NM_value) in pair:
+                    names_here = gene_names[chrom_name].search(start_pos, end_pos)
                     genes_seen.update(names_here)
         if len(genes_seen) == 1:
             yield (read_name, genes_seen.pop(), mappings)
