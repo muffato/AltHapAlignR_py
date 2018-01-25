@@ -6,6 +6,16 @@ import re
 import sys
 import time
 
+# Configure the path to pybam, since it's not available in PyPI
+sys.path.append('./pybam/')
+# You may need to configure the download location of both intervaltree and its
+# dependency, sorted_containers, if you can't install them via pip, e.g.
+# sys.path.append('./intervaltree/')
+# sys.path.append('./sorted_containers/')
+
+import pybam
+
+
 # quicksect is much faster than intervaltree, but harder to install, so make it optional
 try:
     import quicksect
@@ -50,9 +60,6 @@ except ImportError:
         def search(self, start, end):
             return [i.data for i in self.super_search(start, end+1)]
 
-# Configure the path to pybam
-sys.path.append('./pybam/')
-import pybam
 
 parser = optparse.OptionParser(usage = "usage: %prog [options] gtf_file bam_file_1 bam_file_2 ...")
 parser.add_option("-r", "--rename_gene", nargs = 2, action = 'append', dest = 'gene_renames', metavar = 'NAME_TO_REPLACE NEW_NAME',
