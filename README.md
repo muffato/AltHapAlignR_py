@@ -10,10 +10,10 @@ The python script has a few dependencies:
 * [quicksect](https://pypi.python.org/pypi/quicksect): C/Python library
   that implements [interval trees](https://en.wikipedia.org/wiki/Interval_tree)
   too but is about 4x faster than `intervaltree`. Note that its
-  installation requires [Cython](https://pypi.python.org/pypi/Cython)
+  installation may require [Cython](https://pypi.python.org/pypi/Cython)
   and a compiler (e.g. gcc) setup.
 
-Only one of the two latter is needed, `quicksect` being the preferred
+Only one of the last two is needed, `quicksect` being the preferred
 option for performance reasons.
 
 There are several ways of bringing them in, the easiest being with `pip`.
@@ -76,10 +76,10 @@ reads in each pair.
 
 ### Runtime statistics
 
-The script's runtime statistics are linear in the total number of reads
+The script's CPU-time is linear in the total number of reads
 found in the BAM files. Depending on the CPU, it can parse between 30,000
 and 80,000 reads per second. The analysis from the paper over 8 BAM files
-comprising more then 13 million reads takes less than 3 minutes on an Intel i7-7500U
+comprising more than 13 million reads takes less than 3 minutes on an Intel i7-7500U
 CPU @ 2.70GHz (on 1 core only). The memory consumption is limited than 20MB
 with `quicksect`, 35MB with `intervaltree`, regardless of the number of reads.
 It only depends on the number of genes and exons in the GTF file.
