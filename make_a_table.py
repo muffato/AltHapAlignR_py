@@ -149,17 +149,20 @@ def paired_reads_parser(bam_parser):
         read = next(bam_parser)
         last_reads = [read[1:]]
         last_read_name = read[0]
+        n_reads = 1
     except StopIteration:
         return
     for read in bam_parser:
         this_read_name = read[0]
         # Same read as last time
         if last_read_name != this_read_name:
-            if len(last_reads) == 2:
+            if n_reads == 2:
                 yield (last_read_name, last_reads)
             last_reads = []
             last_read_name = this_read_name
+            n_reads = 0
         last_reads.append(read[1:])
+        n_reads += 1
 
 
 # Input: list of iterators (read_name, data)
