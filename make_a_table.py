@@ -189,7 +189,13 @@ def merged_iterators(input_parsers):
 # Output: integer
 # Description: Computes the length of the alignment on the genome
 def mapping_length(cigar_list):
-    return sum(-n if c == 'I' else n for (n, c) in cigar_list)
+    s = 0
+    for (n, c) in cigar_list:
+        if c == 'I':
+            s -= n
+        else:
+            s += n
+    return s
 
 
 # Input: iterator (read_name, [data1 | None, data2 | None, ...])
