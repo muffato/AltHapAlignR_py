@@ -17,6 +17,7 @@ import pybam
 
 
 # quicksect is much faster than intervaltree, but harder to install, so make it optional
+closed_end_interval = 1
 try:
     import quicksect
 
@@ -26,39 +27,32 @@ try:
         def __init__(self):
             super(myintervaltree, self).__init__()
             self.interval_to_data = {}
-            self.super_search = super(myintervaltree, self).search
 
         # quicksect cannot associate intervals to data, so we need to it ourselves
-        def addi(self, start, end, data):
+        def add_data(self, start, end, data):
             interval = quicksect.Interval(start, end)
             self.insert( interval )
             self.interval_to_data[ interval ] = data
 
-        def overlaps(self, start, end):
-            return self.super_search(start, end)
-
-        def search(self, start, end):
-            return [self.interval_to_data[i] for i in self.super_search(start, end)]
+        def data_overlapping(self, start, end):
+            return [self.interval_to_data[i] for i in self.search(start, end)]
 
 except ImportError:
     import intervaltree
+
+    closed_end_interval = 0
 
     # Wrapper around intervaltree.IntervalTree so that the rest of the script can work with both quicksect and intervaltree
     class myintervaltree(intervaltree.IntervalTree):
 
         def __init__(self):
             super(myintervaltree, self).__init__()
-            self.super_search = super(myintervaltree, self).search
-            self.super_addi = super(myintervaltree, self).addi
 
-        def addi(self, start, end, data):
-            self.super_addi(start, end+1, data)
+        def add_data(self, start, end, data):
+            self.addi(start, end+1, data)
 
-        def overlaps(self, start, end):
-            return self.super_search(start, end+1)
-
-        def search(self, start, end):
-            return [i.data for i in self.super_search(start, end+1)]
+        def data_overlapping(self, start, end):
+            return [i.data for i in self.search(start, end)]
 
 
 parser = optparse.OptionParser(usage = "usage: %prog [options] gtf_file bam_file_1 bam_file_2 ...")
@@ -105,12 +99,12 @@ with open(gtf_file, 'r') as f:
             i1 = t[8].find('gene_name')
             i2 = t[8].find(';', i1)
             gn = t[8][i1+9:i2].strip()
-            gene_names[t[0]].addi(int(t[3]), int(t[4]), gene_renames.get(gn, gn))
+            gene_names[t[0]].add_data(int(t[3]), int(t[4]), gene_renames.get(gn, gn))
             n_genes += 1
         elif t[2] == "exon":
             if transcript_type_filter and not transcript_type_filter.search(t[8]):
                 continue
-            exons[t[0]].addi(int(t[3]), int(t[4]), 1)
+            exons[t[0]].add_data(int(t[3]), int(t[4]), 1)
             n_exons += 1
 print >> sys.stderr, "Done (%.2f seconds): %d genes and %d exons" % (get_elapsed(), n_genes, n_exons)
 
@@ -141,8 +135,8 @@ def discard_non_unique_mappings(bam_parser):
 def only_exonic_mappings(bam_parser):
     for read in bam_parser:
         (read_name, chrom_name, start_pos, cigar_list, NM_value) = read
-        end_pos = start_pos + mapping_length(cigar_list) - 1
-        if exons[chrom_name].overlaps(start_pos, end_pos):
+        end_pos = start_pos + mapping_length(cigar_list) - closed_end_interval
+        if exons[chrom_name].search(start_pos, end_pos):
             yield (read_name, chrom_name, start_pos, end_pos, NM_value)
 
 
@@ -202,7 +196,7 @@ def select_same_gene(group_iterator):
         for pair in mappings:
             if pair is not None:
                 for (chrom_name, start_pos, end_pos, NM_value) in pair:
-                    names_here = gene_names[chrom_name].search(start_pos, end_pos)
+                    names_here = gene_names[chrom_name].data_overlapping(start_pos, end_pos)
                     genes_seen.update(names_here)
         if len(genes_seen) == 1:
             yield (read_name, genes_seen.pop(), mappings)
