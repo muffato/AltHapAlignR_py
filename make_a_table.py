@@ -130,7 +130,7 @@ def discard_non_unique_mappings(bam_parser):
 
 
 # Input: BAM iterator
-# Output: BAM iterator
+# Output: BAM iterator (with the end position (adjusted for the interval-tree searches) instead of the cigar alignment)
 # Description: Discards the reads that do not overlap any exons
 def only_exonic_mappings(bam_parser):
     for (read_name, chrom_name, start_pos, cigar_list, NM_value) in bam_parser:
@@ -154,7 +154,7 @@ def paired_reads_parser(bam_parser):
         return
     for read in bam_parser:
         this_read_name = read[0]
-        # Same read as last time
+        # Same read name as last time
         if last_read_name != this_read_name:
             if n_reads == 2:
                 yield (last_read_name, last_reads)
@@ -169,6 +169,10 @@ def paired_reads_parser(bam_parser):
 # Output: iterator (read_name, [data1 | None, data2 | None, ...])
 # Description: For each read name, groups the reads from each BAM file,
 #              assuming that the files are sorted by read name
+# Remarks: This is similar to a k-way merge algorithm. Although the merge
+#          itself can be achieved in O(log(k)) in theory, my implementations
+#          did not provide any improvements, especially because the output
+#          of the function is O(k). So in the end I'm merging the streams in O(k)
 def merged_iterators(input_parsers):
     current_reads = [parser.next() for parser in input_parsers]   # Assumes none of the iterators is empty
     active_bam_parsers = len(input_parsers)
