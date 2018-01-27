@@ -133,8 +133,7 @@ def discard_non_unique_mappings(bam_parser):
 # Output: BAM iterator
 # Description: Discards the reads that do not overlap any exons
 def only_exonic_mappings(bam_parser):
-    for read in bam_parser:
-        (read_name, chrom_name, start_pos, cigar_list, NM_value) = read
+    for (read_name, chrom_name, start_pos, cigar_list, NM_value) in bam_parser:
         end_pos = start_pos + mapping_length(cigar_list) - closed_end_interval
         if exons[chrom_name].search(start_pos, end_pos):
             yield (read_name, chrom_name, start_pos, end_pos, NM_value)
