@@ -82,8 +82,8 @@ def get_elapsed():
 
 
 print >> sys.stderr, "Loading the GTF file ... ",
-gene_type_filter = re.compile("gene_type (%s);" % options.gene_types.replace(",", "|")) if options.gene_types else None
-transcript_type_filter = re.compile("transcript_type (%s);" % options.transcript_types.replace(",", "|")) if options.transcript_types else None
+gene_type_filter = re.compile('gene_type "?(%s)"?;' % options.gene_types.replace(",", "|")) if options.gene_types else None
+transcript_type_filter = re.compile('transcript_type "?(%s)"?;' % options.transcript_types.replace(",", "|")) if options.transcript_types else None
 gene_renames = dict(options.gene_renames) if options.gene_renames else {}
 
 gene_names = collections.defaultdict(myintervaltree)
@@ -98,7 +98,7 @@ with open(gtf_file, 'r') as f:
         if t[2] == "gene":
             i1 = t[8].find('gene_name')
             i2 = t[8].find(';', i1)
-            gn = t[8][i1+9:i2].strip()
+            gn = t[8][i1+9:i2].strip().strip('"')
             gene_names[t[0]].add_data(int(t[3]), int(t[4]), gene_renames.get(gn, gn))
             n_genes += 1
         elif t[2] == "exon":
