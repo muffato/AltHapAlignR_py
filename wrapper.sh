@@ -1,6 +1,10 @@
 #!/bin/bash
 
 # Write here the path to your virtualenv to activate it
-#source $ALTHAPALIGN_VENV/bin/activate
+if [ ! -z "$1" ]
+then
+    source "$1/bin/activate"
+fi
+shift
 
 exec "$@"
