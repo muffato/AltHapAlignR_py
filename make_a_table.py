@@ -231,6 +231,7 @@ n_groups = 0
 last_n_bam_aligns = 0
 partial_time = ref_time
 print >> sys.stderr, "Reading the BAM files ..."
+print "\t".join(["read_name", "gene_name"] + bam_files)
 for s in toString(select_same_gene(merged_iterators([paired_reads_parser(only_exonic_mappings(discard_non_unique_mappings(p))) for p in bam_parsers]))):
     print s
     n_groups += 1
