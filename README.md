@@ -24,22 +24,22 @@ self-contained. For instance:
 ```sh
 # Where the files are going to be stored
 ALTHAPALIGN_VENV=$PWD/althapalign_virtualenv
+
 # To create a "virtualenv" (only the first time)
 virtualenv $ALTHAPALIGN_VENV
+
 # To start using the "virtualenv"
 source $ALTHAPALIGN_VENV/bin/activate
+
+# To install the dependencies
+pip install https://github.com/muffato/pybam/zipball/master
+pip install cython
+pip install quicksect
+
 # To stop using it, once finished
 deactivate
 ```
 
-_pybam_ is unfortunately not available in PyPI, so you will have to
-download it from their [github repository](https://github.com/JohnLonginotto/pybam).
-The script assumes that the repository is checked out alongside, but
-you can use any other location as long as it is configured in the script
-itself, cf the line
-```
-sys.path.append('./pybam/')
-```
 
 ## Execution
 

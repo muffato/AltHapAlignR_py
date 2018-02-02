@@ -6,13 +6,6 @@ import re
 import sys
 import time
 
-# Configure the path to pybam, since it's not available in PyPI
-sys.path.append('./pybam/')
-# You may need to configure the download location of both intervaltree and its
-# dependency, sorted_containers, if you can't install them via pip, e.g.
-# sys.path.append('./intervaltree/')
-# sys.path.append('./sorted_containers/')
-
 import pybam
 
 
