@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Write here the path to your virtualenv to activate it
+# Activate the virtualenv if given a valid path
 if [ ! -z "$1" ]
 then
     source "$1/bin/activate"
