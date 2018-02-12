@@ -97,7 +97,9 @@ with open(gtf_file, 'r') as f:
         elif t[2] == "exon":
             if transcript_type_filter and not transcript_type_filter.search(t[8]):
                 continue
-            exons[t[0]].add_data(int(t[3]), int(t[4]), 1)
+            start = int(t[3])
+            end = int(t[4])
+            exons[t[0]].add_data(start, end, 1)
             n_exons += 1
 print >> sys.stderr, "Done (%.2f seconds): %d genes and %d exons" % (get_elapsed(), n_genes, n_exons)
 
