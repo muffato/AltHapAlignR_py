@@ -81,27 +81,27 @@ gene_renames = dict(options.gene_renames) if options.gene_renames else {}
 
 gene_names = collections.defaultdict(myintervaltree)
 exons = collections.defaultdict(myintervaltree)
-n_genes = 0
+n_genes = set()
 n_exons = 0
 with open(gtf_file, 'r') as f:
     for line in f:
         t = line.strip().split("\t")
         if gene_type_filter and not gene_type_filter.search(t[8]):
             continue
-        if t[2] == "gene":
+        if transcript_type_filter and not transcript_type_filter.search(t[8]):
+            continue
+        if t[2] == "exon":
             i1 = t[8].find('gene_name')
             i2 = t[8].find(';', i1)
             gn = t[8][i1+9:i2].strip().strip('"')
-            gene_names[t[0]].add_data(int(t[3]), int(t[4]), gene_renames.get(gn, gn))
-            n_genes += 1
-        elif t[2] == "exon":
-            if transcript_type_filter and not transcript_type_filter.search(t[8]):
-                continue
+            name = gene_renames.get(gn, gn)
             start = int(t[3])
             end = int(t[4])
+            gene_names[t[0]].add_data(start, end, name)
+            n_genes.add(name)
             exons[t[0]].add_data(start, end, 1)
             n_exons += 1
-print >> sys.stderr, "Done (%.2f seconds): %d genes and %d exons" % (get_elapsed(), n_genes, n_exons)
+print >> sys.stderr, "Done (%.2f seconds): %d genes and %d exons" % (get_elapsed(), len(n_genes), n_exons)
 
 print >> sys.stderr, "Opening the BAM files ...",
 bam_parsers = [pybam.read(bam_file, ['sam_qname', 'sam_rname', 'sam_pos1', 'sam_cigar_list', 'sam_tags_list']) for bam_file in bam_files]
