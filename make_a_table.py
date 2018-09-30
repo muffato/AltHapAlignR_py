@@ -1,6 +1,7 @@
 #!/usr/bin/env python2
 
 import collections
+import gzip
 import optparse
 import re
 import sys
@@ -83,7 +84,7 @@ gene_names = collections.defaultdict(myintervaltree)
 exons = collections.defaultdict(myintervaltree)
 n_genes = set()
 n_exons = 0
-with open(gtf_file, 'r') as f:
+with gzip.GzipFile(gtf_file, 'r') if gtf_file.endswith('.gz') else open(gtf_file, 'r') as f:
     for line in f:
         t = line.strip().split("\t")
         if gene_type_filter and not gene_type_filter.search(t[8]):

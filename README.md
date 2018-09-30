@@ -56,7 +56,7 @@ deactivate
 The general syntax is
 
 ```
-./make_a_table.py [-r <wrong_gene_name> <correct_gene_name>] <path/to/GTF_file> <path/to/BAM_file_1> <path/to/BAM_file_2> ...
+./make_a_table.py [-r <wrong_gene_name> <correct_gene_name>] <path/to/GTF_file[.gz]> <path/to/BAM_file_1> <path/to/BAM_file_2> ...
 ```
 The `-r` option can be repeated if several genes have the wrong name. For
 instance, we use [Gencode
