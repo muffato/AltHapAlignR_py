@@ -43,7 +43,7 @@ virtualenv $ALTHAPALIGN_VENV
 source $ALTHAPALIGN_VENV/bin/activate
 
 # To install the dependencies
-pip install https://github.com/muffato/pybam/zipball/master
+pip install https://github.com/JohnLonginotto/pybam/zipball/master
 pip install cython
 pip install quicksect
 
