@@ -46,6 +46,8 @@ except ImportError:
             self.addi(start, end+1, data)
 
         def data_overlapping(self, start, end):
+            # With version 3 and above:
+            # return [i.data for i in self.overlap(start, end)]
             return [i.data for i in self.search(start, end)]
 
 
