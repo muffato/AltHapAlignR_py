@@ -60,6 +60,11 @@ parser.add_option("-t", "--transcript_types", dest = 'transcript_types', default
         help = 'Comma-separated list of transcript biotypes to use for the exon-overlap filtering [default: %default]. Use an empty string for no filtering')
 (options, args) = parser.parse_args()
 
+if len(args) == 0:
+    parser.error("No GTF/BAM files given")
+if len(args) == 1:
+    parser.error("No BAM files given")
+
 gtf_file = args[0]
 bam_files = args[1:]
 print >> sys.stderr, "BAM+GTF merger for AltHapAlign called with these options"
