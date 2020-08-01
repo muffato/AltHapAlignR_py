@@ -11,12 +11,14 @@ import time
 import pybam
 
 
-# quicksect is much faster than intervaltree, but harder to install, so make it optional
-closed_end_interval = 1
+# Define a wrapper around quicksect.IntervalTree or intervaltree.IntervalTree, depending
+# on which one is available, so that the rest of the script can work with both.
+# quicksect is much faster than intervaltree, but harder to install.
+
+# Throughout the script, start and end coordinates are all 1-based and both included
 try:
     import quicksect
 
-    # Wrapper around quicksect.IntervalTree so that the rest of the script can work with both quicksect and intervaltree
     class myintervaltree(quicksect.IntervalTree):
 
         def __init__(self):
@@ -36,9 +38,6 @@ try:
 except ImportError:
     import intervaltree
 
-    closed_end_interval = 0
-
-    # Wrapper around intervaltree.IntervalTree so that the rest of the script can work with both quicksect and intervaltree
     class myintervaltree(intervaltree.IntervalTree):
 
         def __init__(self):
@@ -50,11 +49,15 @@ except ImportError:
                 self.search_func = self.overlap
             self.has_overlap = self.search_func
 
+        # In intervaltree.IntervalTree the intervals include the lower bound but not the upper bound.
         def add_data(self, start, end, data):
             self.addi(start, end+1, data)
 
+        def has_overlap(self, start, end):
+            return self.search_func(start, end+1)
+
         def data_overlapping(self, start, end):
-            return [i.data for i in self.search_func(start, end)]
+            return [i.data for i in self.search_func(start, end+1)]
 
 
 parser = optparse.OptionParser(usage = "usage: %prog [options] gtf_file bam_file_1 bam_file_2 ...")
@@ -154,7 +157,7 @@ def discard_non_unique_mappings(bam_parser):
 # Description: Discards the reads that do not overlap any exons
 def only_exonic_mappings(bam_parser):
     for (read_name, chrom_name, start_pos, cigar_list, NM_value) in bam_parser:
-        end_pos = start_pos + mapping_length(cigar_list) - closed_end_interval
+        end_pos = start_pos + mapping_length(cigar_list) - 1
         if (chrom_name in exons) and exons[chrom_name].has_overlap(start_pos, end_pos):
             yield (read_name, chrom_name, start_pos, end_pos, NM_value)
 
@@ -163,7 +166,7 @@ def only_exonic_mappings(bam_parser):
 # Description: Equivalent of only_exonic_mappings that only transforms the data without doing any filtering
 def all_mappings(bam_parser):
     for (read_name, chrom_name, start_pos, cigar_list, NM_value) in bam_parser:
-        end_pos = start_pos + mapping_length(cigar_list) - closed_end_interval
+        end_pos = start_pos + mapping_length(cigar_list) - 1
         yield (read_name, chrom_name, start_pos, end_pos, NM_value)
 
 
