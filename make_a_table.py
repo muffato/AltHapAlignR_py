@@ -3,6 +3,7 @@
 import collections
 import gzip
 import optparse
+import os
 import re
 import sys
 import time
@@ -58,15 +59,22 @@ parser.add_option("-g", "--gene_types", dest = 'gene_types', default = 'protein_
         help = 'Comma-separated list of gene biotypes to use [default: %default]. Use an empty string for no filtering')
 parser.add_option("-t", "--transcript_types", dest = 'transcript_types', default = 'protein_coding',
         help = 'Comma-separated list of transcript biotypes to use for the exon-overlap filtering [default: %default]. Use an empty string for no filtering')
+parser.add_option("-n", "--no_gtf_filter", action = 'store_true',
+        help = 'Do not use a GTF file to filter the reads. The command line arguments are then expected to all be BAM files.')
 (options, args) = parser.parse_args()
 
+if options.no_gtf_filter:
+    parser.usage = parser.usage.replace('gtf_file ', '')
+    gtf_file = None
+else:
+    if len(args) == 0:
+        parser.error("No GTF/BAM files given")
+    gtf_file = args.pop(0)
+
 if len(args) == 0:
-    parser.error("No GTF/BAM files given")
-if len(args) == 1:
     parser.error("No BAM files given")
 
-gtf_file = args[0]
-bam_files = args[1:]
+bam_files = args
 print >> sys.stderr, "BAM+GTF merger for AltHapAlign called with these options"
 print >> sys.stderr, "\tgtf_file:", gtf_file
 print >> sys.stderr, "\tbam_files:", bam_files
@@ -82,7 +90,8 @@ def get_elapsed():
     return elapsed
 
 
-print >> sys.stderr, "Loading the GTF file ... ",
+if not options.no_gtf_filter:
+    print >> sys.stderr, "Loading the GTF file ... ",
 gene_type_filter = re.compile('gene_type "?(%s)"?;' % options.gene_types.replace(",", "|")) if options.gene_types else None
 transcript_type_filter = re.compile('transcript_type "?(%s)"?;' % options.transcript_types.replace(",", "|")) if options.transcript_types else None
 gene_renames = dict(options.gene_renames) if options.gene_renames else {}
@@ -91,6 +100,8 @@ gene_names = collections.defaultdict(myintervaltree)
 exons = collections.defaultdict(myintervaltree)
 n_genes = set()
 n_exons = 0
+if options.no_gtf_filter:
+    gtf_file = os.devnull
 with gzip.GzipFile(gtf_file, 'r') if gtf_file.endswith('.gz') else open(gtf_file, 'r') as f:
     for line in f:
         t = line.strip().split("\t")
@@ -109,7 +120,8 @@ with gzip.GzipFile(gtf_file, 'r') if gtf_file.endswith('.gz') else open(gtf_file
             n_genes.add(name)
             exons[t[0]].add_data(start, end, 1)
             n_exons += 1
-print >> sys.stderr, "Done (%.2f seconds): %d genes and %d exons" % (get_elapsed(), len(n_genes), n_exons)
+if not options.no_gtf_filter:
+    print >> sys.stderr, "Done (%.2f seconds): %d genes and %d exons" % (get_elapsed(), len(n_genes), n_exons)
 
 print >> sys.stderr, "Opening the BAM files ...",
 bam_parsers = [pybam.read(bam_file, ['sam_qname', 'sam_rname', 'sam_pos1', 'sam_cigar_list', 'sam_tags_list']) for bam_file in bam_files]
@@ -140,6 +152,14 @@ def only_exonic_mappings(bam_parser):
         end_pos = start_pos + mapping_length(cigar_list) - closed_end_interval
         if (chrom_name in exons) and exons[chrom_name].search(start_pos, end_pos):
             yield (read_name, chrom_name, start_pos, end_pos, NM_value)
+
+# Input: BAM iterator
+# Output: BAM iterator (with the end position (adjusted for the interval-tree searches) instead of the cigar alignment)
+# Description: Equivalent of only_exonic_mappings that only transforms the data without doing any filtering
+def all_mappings(bam_parser):
+    for (read_name, chrom_name, start_pos, cigar_list, NM_value) in bam_parser:
+        end_pos = start_pos + mapping_length(cigar_list) - closed_end_interval
+        yield (read_name, chrom_name, start_pos, end_pos, NM_value)
 
 
 # Input: iterator (read_name, ...data...)
@@ -223,9 +243,9 @@ def select_same_gene(group_iterator):
 
 
 def toString(group_iterator):
-    for (read_name, gene_name, mappings) in group_iterator:
-        line = [read_name, gene_name]
-        for m in mappings:
+    for g in group_iterator:
+        line = list(g[:-1])     # read_name, gene_name if a GTF file is given
+        for m in g[-1]:         # mappings
             line.append('NA' if m is None else str(m[0][3] + m[1][3]))
         yield "\t".join(line)
 
@@ -234,8 +254,15 @@ n_groups = 0
 last_n_bam_aligns = 0
 partial_time = ref_time
 print >> sys.stderr, "Reading the BAM files ..."
-print "\t".join(["read_name", "gene_name"] + bam_files)
-for s in toString(select_same_gene(merged_iterators([paired_reads_parser(only_exonic_mappings(discard_non_unique_mappings(p))) for p in bam_parsers]))):
+headers = ["read_name"]
+if options.no_gtf_filter:
+    it = toString(merged_iterators([paired_reads_parser(all_mappings(discard_non_unique_mappings(p))) for p in bam_parsers]))
+else:
+    headers = headers + ["gene_name"]
+    it = toString(select_same_gene(merged_iterators([paired_reads_parser(only_exonic_mappings(discard_non_unique_mappings(p))) for p in bam_parsers])))
+headers = headers + bam_files
+print "\t".join(headers)
+for s in it:
     print s
     n_groups += 1
     if not n_groups % 10000:
