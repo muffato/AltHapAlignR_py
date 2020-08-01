@@ -115,5 +115,5 @@ It only depends on the number of genes and exons in the GTF file.
 ### Example command-line
 
 ```
-./make_a_table.py -r VARSL VARS2 -r C6orf205 MUC21 gencode.v21.only_MHC.annotation.gtf.gz */*picard*bam > output_file
+./make_a_table.py -r VARSL VARS2 -r C6orf205 MUC21 gencode.v21.only_MHC.annotation.gtf.gz */*picard-sorted*bam > output_file
 ```
