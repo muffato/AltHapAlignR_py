@@ -145,7 +145,7 @@ def discard_non_unique_mappings(bam_parser):
         n_bam_aligns += 1
         NH_value = [t[2] for t in read[-1] if t[0] == 'NH'][0]  # Assumes the tag is always present
         if NH_value == 1:
-            NM_value = [t[2] for t in read[-1] if t[0] == 'NM'][0]  # Assumes the tag is always present
+            NM_value = [t[2] for t in read[-1] if t[0].upper() == 'NM'][0]  # Assumes the tag is always present
             yield (read[:-1] + (NM_value,))
 
 
