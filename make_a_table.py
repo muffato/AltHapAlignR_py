@@ -43,6 +43,7 @@ except ImportError:
 
         def __init__(self):
             super(myintervaltree, self).__init__()
+            # Deal with versions 2.* and 3.*
             if hasattr(intervaltree.IntervalTree, "search"):
                 self.search_func = self.search
             else:
