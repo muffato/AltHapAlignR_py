@@ -56,7 +56,7 @@ deactivate
 
 ### Inputs
 
-* GTF file that covers all the haplotypes
+* GTF file that covers all the haplotypes (optional)
 * BAM files (1 per region). They *must* be sorted by *query name* with
   [Picard](http://broadinstitute.github.io/picard/). *Do not use samtools*
   to sort the files as it [does not follow the lexicographic
@@ -67,8 +67,23 @@ deactivate
 The general syntax is
 
 ```
-./make_a_table.py [-r <wrong_gene_name> <correct_gene_name>] <path/to/GTF_file[.gz]> <path/to/BAM_file_1> <path/to/BAM_file_2> ...
+Usage: make_a_table.py [options] gtf_file bam_file_1 bam_file_2 ...
+
+Options:
+  -h, --help            show this help message and exit
+  -r NAME_TO_REPLACE NEW_NAME, --rename_gene=NAME_TO_REPLACE NEW_NAME
+                        Replace some erroneous gene names
+  -g GENE_TYPES, --gene_types=GENE_TYPES
+                        Comma-separated list of gene biotypes to use [default:
+                        protein_coding]. Use an empty string for no filtering
+  -t TRANSCRIPT_TYPES, --transcript_types=TRANSCRIPT_TYPES
+                        Comma-separated list of transcript biotypes to use for
+                        the exon-overlap filtering [default: protein_coding].
+                        Use an empty string for no filtering
+  -n, --no_gtf_filter   Do not use a GTF file to filter the reads. The command
+                        line arguments are then expected to all be BAM files.
 ```
+
 The `-r` option can be repeated if several genes have the wrong name. For
 instance, we use [Gencode
 21](https://www.gencodegenes.org/releases/21.html) in the paper, which has
@@ -76,7 +91,7 @@ to be _fixed_ with `-r VARSL VARS2 -r C6orf205 MUC21`
 
 ### Output
 
-The output is a tab-separated file with _n_+2 columns, _n_ being the number
+The output is usually a tab-separated file with _n_+2 columns, _n_ being the number
 of BAM files.
 
 | read name | gene name | edit distance in BAM file 1 | edit distance in BAM file 2 | ... |
@@ -84,6 +99,8 @@ of BAM files.
 
 Each edit distance is actually the _sum_ of the edit distances of the two
 reads in each pair.
+
+If the `--no_gtf_filter` option is used, the second column is skipped.
 
 ### Runtime statistics
 
