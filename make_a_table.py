@@ -22,6 +22,7 @@ try:
         def __init__(self):
             super(myintervaltree, self).__init__()
             self.interval_to_data = {}
+            self.has_overlap = self.search
 
         # quicksect cannot associate intervals to data, so we need to it ourselves
         def add_data(self, start, end, data):
@@ -42,14 +43,17 @@ except ImportError:
 
         def __init__(self):
             super(myintervaltree, self).__init__()
+            if hasattr(intervaltree.IntervalTree, "search"):
+                self.search_func = self.search
+            else:
+                self.search_func = self.overlap
+            self.has_overlap = self.search_func
 
         def add_data(self, start, end, data):
             self.addi(start, end+1, data)
 
         def data_overlapping(self, start, end):
-            # With version 3 and above:
-            # return [i.data for i in self.overlap(start, end)]
-            return [i.data for i in self.search(start, end)]
+            return [i.data for i in self.search_func(start, end)]
 
 
 parser = optparse.OptionParser(usage = "usage: %prog [options] gtf_file bam_file_1 bam_file_2 ...")
@@ -150,7 +154,7 @@ def discard_non_unique_mappings(bam_parser):
 def only_exonic_mappings(bam_parser):
     for (read_name, chrom_name, start_pos, cigar_list, NM_value) in bam_parser:
         end_pos = start_pos + mapping_length(cigar_list) - closed_end_interval
-        if (chrom_name in exons) and exons[chrom_name].search(start_pos, end_pos):
+        if (chrom_name in exons) and exons[chrom_name].has_overlap(start_pos, end_pos):
             yield (read_name, chrom_name, start_pos, end_pos, NM_value)
 
 # Input: BAM iterator

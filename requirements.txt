@@ -1,4 +1,4 @@
 https://github.com/JohnLonginotto/pybam/zipball/master
 cython
-#intervaltree==2.1.0
+#intervaltree
 quicksect
