@@ -2,8 +2,9 @@
 
 This repository holds the development history of the `make_a_table.py`
 script embedded in
-[jknightlab/AltHapAlignR](https://github.com/jknightlab/AltHapAlignR/tree/master/inst/scripts).
-Please report all issues and pull-requests there.
+[jknightlab/AltHapAlignR](https://github.com/jknightlab/AltHapAlignR/tree/master/inst/scripts),
+plus a few extra modifications.
+Please report all issues and pull-requests there, not here.
 
 The script is designed to read a set of BAM files representing reads
 aligned to various haplotypes, combine them and intersect the alignments
