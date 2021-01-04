@@ -149,10 +149,22 @@ def discard_non_unique_mappings(bam_parser):
     for read in bam_parser:
         global n_bam_aligns
         n_bam_aligns += 1
-        NH_value = [t[2] for t in read[-1] if t[0].upper() == 'NH'][0]  # Assumes the tag is always present
-        if NH_value == 1:
-            NM_value = [t[2] for t in read[-1] if t[0].upper() == 'NM'][0]  # Assumes the tag is always present
-            yield (read[:-1] + (NM_value,))
+        NH_values = [t[2] for t in read[-1] if t[0].upper() == 'NH']
+        if not NH_values:
+            print >> sys.stderr, "ERROR: Could not find any NH tag in", read
+            sys.exit(1)
+        if len(NH_values) > 1:
+            print >> sys.stderr, "ERROR: More than 1 NH tag in", read
+            sys.exit(1)
+        if NH_values[0] == 1:
+            NM_values = [t[2] for t in read[-1] if t[0].upper() == 'NM']
+            if not NM_values:
+                print >> sys.stderr, "ERROR: Could not find any NM tag in", read
+                sys.exit(1)
+            if len(NM_values) > 1:
+                print >> sys.stderr, "ERROR: More than 1 NM tag in", read
+                sys.exit(1)
+            yield (read[:-1] + (NM_values[0],))
 
 
 # Input: BAM iterator
