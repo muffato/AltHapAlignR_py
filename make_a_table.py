@@ -118,6 +118,9 @@ with gzip.GzipFile(gtf_file, 'r') if gtf_file.endswith('.gz') else open(gtf_file
         if transcript_type_filter and not transcript_type_filter.search(t[8]):
             continue
         if t[2] == "exon":
+            if 'gene_name' not in t[8]:
+                print >> sys.stderr, "Failed\nERROR: no 'gene_name' attribute for this exon:", line,
+                sys.exit(1)
             i1 = t[8].find('gene_name')
             i2 = t[8].find(';', i1)
             gn = t[8][i1+9:i2].strip().strip('"')
