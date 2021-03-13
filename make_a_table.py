@@ -303,12 +303,11 @@ def select_same_gene(group_iterator):
             n_different_genes += 1
 
 
-def toString(group_iterator):
-    for g in group_iterator:
-        line = list(g[:-1])     # read_name, gene_name if a GTF file is given
-        for m in g[-1]:         # mappings
-            line.append('NA' if m is None else str(m[0][3] + m[1][3]))
-        yield "\t".join(line)
+def toString(g):
+    line = list(data[:-1])     # read_name (always), gene_name (optional)
+    for m in data[-1]:         # mappings
+        line.append('NA' if m is None else str(m[0][3] + m[1][3]))
+    return "\t".join(line)
 
 
 n_groups = 0
@@ -317,14 +316,14 @@ partial_time = ref_time
 print >> sys.stderr, "Reading the BAM files ..."
 headers = ["read_name"]
 if options.no_gtf_filter:
-    it = toString(merged_iterators([paired_reads_parser(all_mappings(discard_non_unique_mappings(extract_tags(p)))) for p in bam_parsers]))
+    it = merged_iterators([paired_reads_parser(all_mappings(discard_non_unique_mappings(extract_tags(p)))) for p in bam_parsers])
 else:
     headers = headers + ["gene_name"]
-    it = toString(select_same_gene(merged_iterators([paired_reads_parser(only_exonic_mappings(discard_non_unique_mappings(extract_tags(p)))) for p in bam_parsers])))
+    it = select_same_gene(merged_iterators([paired_reads_parser(only_exonic_mappings(discard_non_unique_mappings(extract_tags(p)))) for p in bam_parsers]))
 headers = headers + bam_files
 print "\t".join(headers)
-for s in it:
-    print s
+for data in it:
+    print toString(data)
     n_groups += 1
     if not n_groups % 10000:
         print >> sys.stderr, "Found %d reads across all BAM files (%d alignments processed -- %.2f per second)" % (n_groups, n_bam_aligns, (n_bam_aligns-last_n_bam_aligns)/get_elapsed())
