@@ -253,12 +253,15 @@ def group_read_alignments(bam_parser):
 #          itself can be achieved in O(log(k)) in theory, my implementations
 #          did not provide any improvements, especially because the output
 #          of the function is O(k). So in the end I'm merging the streams in O(k)
+n_groups = 0
 def merged_iterators(input_parsers):
     current_reads = [parser.next() for parser in input_parsers]   # Assumes none of the iterators is empty
     active_bam_parsers = len(input_parsers)
     while active_bam_parsers:
         read_names = [cr[0] for cr in current_reads if cr[0] is not None]
         next_read_name = min(read_names)
+        global n_groups
+        n_groups += 1
         yield (next_read_name, [cr[1] if cr[0] == next_read_name else None for cr in current_reads])
         for (i, cr) in enumerate(current_reads):
             if cr[0] == next_read_name:
@@ -287,18 +290,38 @@ def mapping_length(cigar_list):
 # Description: For each group of reads, finds the gene names on the genome
 #              (using the alignment) and only keeps the groups that map to
 #              a single gene name.
-n_different_genes = 0
+n_unique_groups = 0
+n_best_groups = 0
+n_ambiguous_groups = 0
 def select_same_gene(group_iterator):
     for (read_name, mappings) in group_iterator:
-        genes_seen = set()
+        genes_seen = {}
         for pair in mappings:
             if pair is not None:
-                genes_seen.add(pair[0])
+                gene_name = pair[0]
+                NM_score = sum(alignment[-1] for alignment in pair[1])
+                if gene_name in genes_seen:
+                    if NM_score < genes_seen[gene_name]:
+                        genes_seen[gene_name] = NM_score
+                else:
+                    genes_seen[gene_name] = NM_score
         if len(genes_seen) == 1:
-            yield (read_name, genes_seen.pop(), mappings)
+            global n_unique_groups
+            n_unique_groups += 1
+            yield (read_name, 'unique', genes_seen.keys()[0], mappings)
         else:
-            global n_different_genes
-            n_different_genes += 1
+            best_NM = min(genes_seen.values())
+            best_genes = [gene_name for (gene_name, NM_score) in genes_seen.items() if NM_score == best_NM]
+            if len(best_genes) == 1:
+                global n_best_groups
+                n_best_groups += 1
+                status = 'best'
+            else:
+                global n_ambiguous_groups
+                n_ambiguous_groups += 1
+                status = 'ambiguous'
+            for gene_name in best_genes:
+                yield (read_name, status, gene_name, [pair if pair and pair[0] == gene_name else None for pair in mappings])
 
 
 def toString(g):
@@ -308,7 +331,6 @@ def toString(g):
     return "\t".join(line)
 
 
-n_groups = 0
 last_n_bam_aligns = 0
 partial_time = ref_time
 print >> sys.stderr, "Reading the BAM files ..."
@@ -321,12 +343,15 @@ else:
     it = select_same_gene(merged_iterators([only_exonic_mappings(bf) for bf in bam_filters]))
 headers = headers + bam_files
 print "\t".join(headers)
+last_n_groups = 0
+n_lines = 0
 for data in it:
     print toString(data)
-    n_groups += 1
-    if not n_groups % 10000:
+    n_lines += 1
+    if n_groups >= last_n_groups+10000:
         print >> sys.stderr, "Found %d reads across all BAM files (%d alignments processed -- %.2f per second)" % (n_groups, n_bam_aligns, (n_bam_aligns-last_n_bam_aligns)/get_elapsed())
         last_n_bam_aligns = n_bam_aligns
+        last_n_groups = n_groups
 
 ref_time = partial_time
 print >> sys.stderr, "Finished reading the BAM files in %.2f seconds" % get_elapsed()
@@ -336,8 +361,10 @@ print >> sys.stderr, "\t%d discarded (%.2f%%) - multiple hits (NH != 1)" % (n_mu
 print >> sys.stderr, "%d paired alignments" % n_paired_alignments
 print >> sys.stderr, "\t%d discarded (%.2f%%) - not exonic" % (n_non_exonic_bam_aligns, 100.*n_non_exonic_bam_aligns/n_paired_alignments)
 print >> sys.stderr, "\t%d discarded (%.2f%%) - different genes" % (n_different_genes_pair, 100.*n_different_genes_pair/n_paired_alignments)
-print >> sys.stderr, "%d reads after grouping the BAM Files" % (n_groups + n_different_genes)
+print >> sys.stderr, "%d reads after grouping the BAM Files" % n_groups
 if not options.no_gtf_filter:
-    if n_groups + n_different_genes:
-        print >> sys.stderr, "\t%d discarded (%.2f%%) - across different genes" % (n_different_genes, 100.*n_different_genes/(n_groups+n_different_genes))
+    print >> sys.stderr, "Gene name assignment statistics"
+    print >> sys.stderr, "\t%d reads (%.2f%%): all BAM files agree" % (n_unique_groups, 100.*n_unique_groups/n_groups)
+    print >> sys.stderr, "\t%d reads (%.2f%%): multiple candidates, lowest NM score selected" % (n_best_groups, 100.*n_best_groups/n_groups)
+    print >> sys.stderr, "\t%d reads (%.2f%%): multiple candidates, tie - %d candidates listed (%.2f per read on average)" % (n_ambiguous_groups, 100.*n_ambiguous_groups/n_groups, n_lines-n_unique_groups-n_best_groups, float(n_lines-n_unique_groups-n_best_groups)/n_ambiguous_groups)
 
