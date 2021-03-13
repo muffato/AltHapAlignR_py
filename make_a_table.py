@@ -153,7 +153,19 @@ def get_tag_value(read, tag):
     return values[0]
 
 
+# Input: BAM iterator with tag list
+# Output: BAM iterator with selected tag values (NH and NM)
+# Description: Extract the NH and NM values from the BAM alignments
 n_bam_aligns = 0
+def extract_tags(bam_parser):
+    for read in bam_parser:
+        global n_bam_aligns
+        n_bam_aligns += 1
+        NH_value = get_tag_value(read, 'NH')
+        NM_value = get_tag_value(read, 'NM')
+        yield (read[:-1] + (NH_value, NM_value))
+
+
 n_non_unique_bam_aligns = 0
 
 # Input: BAM iterator (with tag list)
@@ -163,12 +175,8 @@ n_non_unique_bam_aligns = 0
 #              the NM tag.
 def discard_non_unique_mappings(bam_parser):
     for read in bam_parser:
-        global n_bam_aligns
-        n_bam_aligns += 1
-        NH_value = get_tag_value(read, 'NH')
-        if NH_value == 1:
-            NM_value = get_tag_value(read, 'NM')
-            yield (read[:-1] + (NM_value,))
+        if read[-2] == 1:
+            yield read
         else:
             global n_non_unique_bam_aligns
             n_non_unique_bam_aligns += 1
@@ -179,7 +187,7 @@ def discard_non_unique_mappings(bam_parser):
 # Description: Discards the reads that do not overlap any exons
 n_non_exonic_bam_aligns = 0
 def only_exonic_mappings(bam_parser):
-    for (read_name, chrom_name, start_pos, cigar_list, NM_value) in bam_parser:
+    for (read_name, chrom_name, start_pos, cigar_list, NH_value, NM_value) in bam_parser:
         end_pos = start_pos + mapping_length(cigar_list) - 1
         if (chrom_name in exons) and exons[chrom_name].has_overlap(start_pos, end_pos):
             yield (read_name, chrom_name, start_pos, end_pos, NM_value)
@@ -309,10 +317,10 @@ partial_time = ref_time
 print >> sys.stderr, "Reading the BAM files ..."
 headers = ["read_name"]
 if options.no_gtf_filter:
-    it = toString(merged_iterators([paired_reads_parser(all_mappings(discard_non_unique_mappings(p))) for p in bam_parsers]))
+    it = toString(merged_iterators([paired_reads_parser(all_mappings(discard_non_unique_mappings(extract_tags(p)))) for p in bam_parsers]))
 else:
     headers = headers + ["gene_name"]
-    it = toString(select_same_gene(merged_iterators([paired_reads_parser(only_exonic_mappings(discard_non_unique_mappings(p))) for p in bam_parsers])))
+    it = toString(select_same_gene(merged_iterators([paired_reads_parser(only_exonic_mappings(discard_non_unique_mappings(extract_tags(p)))) for p in bam_parsers])))
 headers = headers + bam_files
 print "\t".join(headers)
 for s in it:
