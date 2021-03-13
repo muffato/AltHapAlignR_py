@@ -138,6 +138,21 @@ print >> sys.stderr, "Opening the BAM files ...",
 bam_parsers = [pybam.read(bam_file, ['sam_qname', 'sam_rname', 'sam_pos1', 'sam_cigar_list', 'sam_tags_list']) for bam_file in bam_files]
 print >> sys.stderr, " Done (%.2f seconds)" % (get_elapsed(),)
 
+
+# Input: BAM read with tag list, and tag name
+# Output: the value of the tag
+# Exception: exit if the tag is not present, or in multiple copies
+def get_tag_value(read, tag):
+    values = [t[2] for t in read[-1] if t[0].upper() == tag]
+    if not values:
+        print >> sys.stderr, "ERROR: Could not find any %s tag in" % tag, read
+        sys.exit(1)
+    if len(values) > 1:
+        print >> sys.stderr, "ERROR: More than 1 %s tag in" % tag, read
+        sys.exit(1)
+    return values[0]
+
+
 n_bam_aligns = 0
 n_non_unique_bam_aligns = 0
 
@@ -150,22 +165,10 @@ def discard_non_unique_mappings(bam_parser):
     for read in bam_parser:
         global n_bam_aligns
         n_bam_aligns += 1
-        NH_values = [t[2] for t in read[-1] if t[0].upper() == 'NH']
-        if not NH_values:
-            print >> sys.stderr, "ERROR: Could not find any NH tag in", read
-            sys.exit(1)
-        if len(NH_values) > 1:
-            print >> sys.stderr, "ERROR: More than 1 NH tag in", read
-            sys.exit(1)
-        if NH_values[0] == 1:
-            NM_values = [t[2] for t in read[-1] if t[0].upper() == 'NM']
-            if not NM_values:
-                print >> sys.stderr, "ERROR: Could not find any NM tag in", read
-                sys.exit(1)
-            if len(NM_values) > 1:
-                print >> sys.stderr, "ERROR: More than 1 NM tag in", read
-                sys.exit(1)
-            yield (read[:-1] + (NM_values[0],))
+        NH_value = get_tag_value(read, 'NH')
+        if NH_value == 1:
+            NM_value = get_tag_value(read, 'NM')
+            yield (read[:-1] + (NM_value,))
         else:
             global n_non_unique_bam_aligns
             n_non_unique_bam_aligns += 1
