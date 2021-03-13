@@ -209,6 +209,8 @@ def paired_reads_parser(bam_parser):
             n_reads = 0
         last_reads.append(read[1:])
         n_reads += 1
+    if n_reads == 2:
+        yield (last_read_name, last_reads)
 
 
 # Input: list of iterators (read_name, data)
