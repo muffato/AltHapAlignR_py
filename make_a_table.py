@@ -139,6 +139,7 @@ bam_parsers = [pybam.read(bam_file, ['sam_qname', 'sam_rname', 'sam_pos1', 'sam_
 print >> sys.stderr, " Done (%.2f seconds)" % (get_elapsed(),)
 
 n_bam_aligns = 0
+n_non_unique_bam_aligns = 0
 
 # Input: BAM iterator (with tag list)
 # Output: BAM iterator (with the value of the NM tag instead of the tag list)
@@ -165,16 +166,23 @@ def discard_non_unique_mappings(bam_parser):
                 print >> sys.stderr, "ERROR: More than 1 NM tag in", read
                 sys.exit(1)
             yield (read[:-1] + (NM_values[0],))
+        else:
+            global n_non_unique_bam_aligns
+            n_non_unique_bam_aligns += 1
 
 
 # Input: BAM iterator
 # Output: BAM iterator (with the end position (adjusted for the interval-tree searches) instead of the cigar alignment)
 # Description: Discards the reads that do not overlap any exons
+n_non_exonic_bam_aligns = 0
 def only_exonic_mappings(bam_parser):
     for (read_name, chrom_name, start_pos, cigar_list, NM_value) in bam_parser:
         end_pos = start_pos + mapping_length(cigar_list) - 1
         if (chrom_name in exons) and exons[chrom_name].has_overlap(start_pos, end_pos):
             yield (read_name, chrom_name, start_pos, end_pos, NM_value)
+        else:
+            global n_non_exonic_bam_aligns
+            n_non_exonic_bam_aligns += 1
 
 # Input: BAM iterator
 # Output: BAM iterator (with the end position (adjusted for the interval-tree searches) instead of the cigar alignment)
@@ -190,6 +198,8 @@ def all_mappings(bam_parser):
 # Description: Group consecutive pairs of reads that have the same name.
 #              Singletons and reads mapping to 3 or more times are thus
 #              discarded.  This assumes that the input BAM file is sorted
+n_singleton_reads = 0
+n_multiple_hit_reads = 0
 def paired_reads_parser(bam_parser):
     try:
         read = next(bam_parser)
@@ -198,12 +208,18 @@ def paired_reads_parser(bam_parser):
         n_reads = 1
     except StopIteration:
         return
+    global n_singleton_reads
+    global n_multiple_hit_reads
     for read in bam_parser:
         this_read_name = read[0]
         # Same read name as last time
         if last_read_name != this_read_name:
             if n_reads == 2:
                 yield (last_read_name, last_reads)
+            elif n_reads == 1:
+                n_singleton_reads += 1
+            else:
+                n_multiple_hit_reads += 1
             last_reads = []
             last_read_name = this_read_name
             n_reads = 0
@@ -211,6 +227,11 @@ def paired_reads_parser(bam_parser):
         n_reads += 1
     if n_reads == 2:
         yield (last_read_name, last_reads)
+    elif n_reads == 1:
+        n_singleton_reads += 1
+    else:
+        assert n_reads > 0
+        n_multiple_hit_reads += 1
 
 
 # Input: list of iterators (read_name, data)
@@ -255,6 +276,7 @@ def mapping_length(cigar_list):
 # Description: For each group of reads, finds the gene names on the genome
 #              (using the alignment) and only keeps the groups that map to
 #              a single gene name.
+n_different_genes = 0
 def select_same_gene(group_iterator):
     for (read_name, mappings) in group_iterator:
         genes_seen = set()
@@ -265,6 +287,9 @@ def select_same_gene(group_iterator):
                     genes_seen.update(names_here)
         if len(genes_seen) == 1:
             yield (read_name, genes_seen.pop(), mappings)
+        else:
+            global n_different_genes
+            n_different_genes += 1
 
 
 def toString(group_iterator):
@@ -291,8 +316,18 @@ for s in it:
     print s
     n_groups += 1
     if not n_groups % 10000:
-        print >> sys.stderr, "Found %d paired reads across all BAM files (%d raw reads processed -- %.2f per second)" % (n_groups, n_bam_aligns, (n_bam_aligns-last_n_bam_aligns)/get_elapsed())
+        print >> sys.stderr, "Found %d reads across all BAM files (%d alignments processed -- %.2f per second)" % (n_groups, n_bam_aligns, (n_bam_aligns-last_n_bam_aligns)/get_elapsed())
         last_n_bam_aligns = n_bam_aligns
+
 ref_time = partial_time
-print >> sys.stderr, "Finished reading the BAM files in %.2f seconds: %d paired reads in total" % (get_elapsed(), n_groups)
+print >> sys.stderr, "Finished reading the BAM files in %.2f seconds" % get_elapsed()
+print >> sys.stderr, "%d alignments across all %d BAM files" % (n_bam_aligns, len(bam_files))
+print >> sys.stderr, "\t%d discarded (%.2f%%) - not unique (NH != 1)" % (n_non_unique_bam_aligns, 100.*n_non_unique_bam_aligns/n_bam_aligns)
+print >> sys.stderr, "\t%d discarded (%.2f%%) - not exonic" % (n_non_exonic_bam_aligns, 100.*n_non_exonic_bam_aligns/n_bam_aligns)
+print >> sys.stderr, "\t%d discarded (%.2f%%) - read name found only once in its BAM file" % (n_singleton_reads, 100.*n_singleton_reads/n_bam_aligns)
+print >> sys.stderr, "\t%d discarded (%.2f%%) - read name found 3 times or more in its BAM file" % (n_multiple_hit_reads, 100.*n_multiple_hit_reads/n_bam_aligns)
+print >> sys.stderr, "%d reads after grouping the BAM Files" % (n_groups + n_different_genes)
+if not options.no_gtf_filter:
+    if n_groups + n_different_genes:
+        print >> sys.stderr, "\t%d discarded (%.2f%%) - across different genes" % (n_different_genes, 100.*n_different_genes/(n_groups+n_different_genes))
 
