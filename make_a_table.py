@@ -202,6 +202,7 @@ def select_paired_alignments(alignment_iterator):
 # Description: Discards the reads that do not overlap any exons
 n_non_exonic_bam_aligns = 0
 n_different_genes_pair = 0
+n_partially_exonic = 0
 def only_exonic_mappings(alignment_iterator):
     for (read_name, alignments) in alignment_iterator:
         ok = 0
@@ -213,13 +214,16 @@ def only_exonic_mappings(alignment_iterator):
                 if names_here:
                     genes_seen.update(names_here)
                     ok += 1
-        if ok < 2:
+        if ok == 0:
             global n_non_exonic_bam_aligns
             n_non_exonic_bam_aligns += 1
         elif len(genes_seen) > 1:
             global n_different_genes_pair
             n_different_genes_pair += 1
         else:
+            if ok == 1:
+                global n_partially_exonic
+                n_partially_exonic += 1
             yield (read_name, (genes_seen.pop(), alignments))
 
 
@@ -359,8 +363,9 @@ print >> sys.stderr, "%d alignments across all %d BAM files" % (n_bam_aligns, le
 print >> sys.stderr, "\t%d discarded (%.2f%%) - singletons " % (n_singletons, 100.*n_singletons/n_bam_aligns)
 print >> sys.stderr, "\t%d discarded (%.2f%%) - multiple hits (NH != 1)" % (n_multiple_hits, 100.*n_multiple_hits/n_bam_aligns)
 print >> sys.stderr, "%d paired alignments" % n_paired_alignments
-print >> sys.stderr, "\t%d discarded (%.2f%%) - not exonic" % (n_non_exonic_bam_aligns, 100.*n_non_exonic_bam_aligns/n_paired_alignments)
-print >> sys.stderr, "\t%d discarded (%.2f%%) - different genes" % (n_different_genes_pair, 100.*n_different_genes_pair/n_paired_alignments)
+print >> sys.stderr, "\t%d discarded (%.2f%%) - both not exonic" % (n_non_exonic_bam_aligns, 100.*n_non_exonic_bam_aligns/n_paired_alignments)
+print >> sys.stderr, "\t%d discarded (%.2f%%) - in different genes" % (n_different_genes_pair, 100.*n_different_genes_pair/n_paired_alignments)
+print >> sys.stderr, "\t%d kept (%.2f%%) - only one not exonic" % (n_partially_exonic, 100.*n_partially_exonic/n_paired_alignments)
 print >> sys.stderr, "%d reads after grouping the BAM Files" % n_groups
 if not options.no_gtf_filter:
     print >> sys.stderr, "Gene name assignment statistics"
