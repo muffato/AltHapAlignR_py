@@ -105,7 +105,6 @@ transcript_type_filter = re.compile('transcript_type "?(%s)"?;' % options.transc
 gene_renames = dict(options.gene_renames) if options.gene_renames else {}
 
 gene_names = collections.defaultdict(myintervaltree)
-exons = collections.defaultdict(myintervaltree)
 n_genes = set()
 n_exons = 0
 if options.no_gtf_filter:
@@ -129,7 +128,6 @@ with gzip.GzipFile(gtf_file, 'r') if gtf_file.endswith('.gz') else open(gtf_file
             end = int(t[4])
             gene_names[t[0]].add_data(start, end, name)
             n_genes.add(name)
-            exons[t[0]].add_data(start, end, 1)
             n_exons += 1
 if not options.no_gtf_filter:
     print >> sys.stderr, "Done (%.2f seconds): %d genes and %d exons" % (get_elapsed(), len(n_genes), n_exons)
@@ -166,83 +164,81 @@ def extract_tags(bam_parser):
         yield (read[:-1] + (NH_value, NM_value))
 
 
-n_non_unique_bam_aligns = 0
-
-# Input: BAM iterator (with tag list)
-# Output: BAM iterator (with the value of the NM tag instead of the tag list)
-# Description: Discards the read that are not uniquely mapped (i.e. don't
-#              have NH:i:1). Also replaces the tag list with the value of
-#              the NM tag.
-def discard_non_unique_mappings(bam_parser):
-    for read in bam_parser:
-        if read[-2] == 1:
-            yield read
+# Input: iterator over paired alignments
+# Output: iterator over a subset of the input
+# Description: Discards the alignments that are not uniquely mapped pairs,
+#              i.e. are singletons or have multiple hits / don't have NH:i:1.
+n_singletons = 0
+n_paired_alignments = 0
+n_multiple_hits = 0
+def select_paired_alignments(alignment_iterator):
+    global n_singletons
+    global n_paired_alignments
+    global n_multiple_hits
+    for data in alignment_iterator:
+        n_alignments = len(data[1])
+        NH_values = [alignment[-2] for alignment in data[1]]
+        if n_alignments == 1:
+            assert NH_values[0] == 1, data[0]
+            n_singletons += 1
+        elif n_alignments == 2:
+            # Check that NH = 1 for both
+            if NH_values[0] != 1:
+                assert NH_values[1] != 1
+                # Could be classified as singletons too
+                n_multiple_hits += 2
+            else:
+                assert NH_values[1] == 1
+                n_paired_alignments += 1
+                yield data
         else:
-            global n_non_unique_bam_aligns
-            n_non_unique_bam_aligns += 1
+            for NH_value in NH_values:
+                assert NH_value != 1
+            n_multiple_hits += n_alignments
 
 
-# Input: BAM iterator
-# Output: BAM iterator (with the end position (adjusted for the interval-tree searches) instead of the cigar alignment)
+# Input: iterator over paired alignments
+# Output: iterator that has gene names too, but on a subset of the alignments
 # Description: Discards the reads that do not overlap any exons
 n_non_exonic_bam_aligns = 0
-def only_exonic_mappings(bam_parser):
-    for (read_name, chrom_name, start_pos, cigar_list, NH_value, NM_value) in bam_parser:
-        end_pos = start_pos + mapping_length(cigar_list) - 1
-        if (chrom_name in exons) and exons[chrom_name].has_overlap(start_pos, end_pos):
-            yield (read_name, chrom_name, start_pos, end_pos, NM_value)
-        else:
+def only_exonic_mappings(alignment_iterator):
+    for (read_name, alignments) in alignment_iterator:
+        ok = 0
+        genes_seen = set()
+        for (chrom_name, start_pos, cigar_list, NH_value, NM_value) in alignments:
+            if chrom_name in gene_names:
+                end_pos = start_pos + mapping_length(cigar_list) - 1
+                names_here = gene_names[chrom_name].data_overlapping(start_pos, end_pos)
+                if names_here:
+                    genes_seen.update(names_here)
+                    ok += 1
+        if ok < 2:
             global n_non_exonic_bam_aligns
             n_non_exonic_bam_aligns += 1
-
-# Input: BAM iterator
-# Output: BAM iterator (with the end position (adjusted for the interval-tree searches) instead of the cigar alignment)
-# Description: Equivalent of only_exonic_mappings that only transforms the data without doing any filtering
-def all_mappings(bam_parser):
-    for (read_name, chrom_name, start_pos, cigar_list, NM_value) in bam_parser:
-        end_pos = start_pos + mapping_length(cigar_list) - 1
-        yield (read_name, chrom_name, start_pos, end_pos, NM_value)
+        else:
+            yield (read_name, (genes_seen, alignments))
 
 
 # Input: iterator (read_name, ...data...)
 # Output: iterator (read_name, [(...data1...), (...data2...)])
 # Description: Group consecutive pairs of reads that have the same name.
-#              Singletons and reads mapping to 3 or more times are thus
-#              discarded.  This assumes that the input BAM file is sorted
-n_singleton_reads = 0
-n_multiple_hit_reads = 0
-def paired_reads_parser(bam_parser):
+#              This assumes that the input BAM file is sorted.
+def group_read_alignments(bam_parser):
     try:
         read = next(bam_parser)
         last_reads = [read[1:]]
         last_read_name = read[0]
-        n_reads = 1
     except StopIteration:
         return
-    global n_singleton_reads
-    global n_multiple_hit_reads
     for read in bam_parser:
         this_read_name = read[0]
         # Same read name as last time
         if last_read_name != this_read_name:
-            if n_reads == 2:
-                yield (last_read_name, last_reads)
-            elif n_reads == 1:
-                n_singleton_reads += 1
-            else:
-                n_multiple_hit_reads += 1
+            yield (last_read_name, last_reads)
             last_reads = []
             last_read_name = this_read_name
-            n_reads = 0
         last_reads.append(read[1:])
-        n_reads += 1
-    if n_reads == 2:
-        yield (last_read_name, last_reads)
-    elif n_reads == 1:
-        n_singleton_reads += 1
-    else:
-        assert n_reads > 0
-        n_multiple_hit_reads += 1
+    yield (last_read_name, last_reads)
 
 
 # Input: list of iterators (read_name, data)
@@ -293,9 +289,7 @@ def select_same_gene(group_iterator):
         genes_seen = set()
         for pair in mappings:
             if pair is not None:
-                for (chrom_name, start_pos, end_pos, NM_value) in pair:
-                    names_here = gene_names[chrom_name].data_overlapping(start_pos, end_pos)
-                    genes_seen.update(names_here)
+                genes_seen.update(pair[0])
         if len(genes_seen) == 1:
             yield (read_name, genes_seen.pop(), mappings)
         else:
@@ -306,7 +300,7 @@ def select_same_gene(group_iterator):
 def toString(g):
     line = list(data[:-1])     # read_name (always), gene_name (optional)
     for m in data[-1]:         # mappings
-        line.append('NA' if m is None else str(m[0][3] + m[1][3]))
+        line.append('NA' if m is None else str(m[1][0][-1] + m[1][1][-1]))
     return "\t".join(line)
 
 
@@ -315,11 +309,12 @@ last_n_bam_aligns = 0
 partial_time = ref_time
 print >> sys.stderr, "Reading the BAM files ..."
 headers = ["read_name"]
+bam_filters = [select_paired_alignments(group_read_alignments(extract_tags(bp))) for bp in bam_parsers]
 if options.no_gtf_filter:
-    it = merged_iterators([paired_reads_parser(all_mappings(discard_non_unique_mappings(extract_tags(p)))) for p in bam_parsers])
+    it = merged_iterators(bam_filters)
 else:
     headers = headers + ["gene_name"]
-    it = select_same_gene(merged_iterators([paired_reads_parser(only_exonic_mappings(discard_non_unique_mappings(extract_tags(p)))) for p in bam_parsers]))
+    it = select_same_gene(merged_iterators([only_exonic_mappings(bf) for bf in bam_filters]))
 headers = headers + bam_files
 print "\t".join(headers)
 for data in it:
@@ -332,10 +327,10 @@ for data in it:
 ref_time = partial_time
 print >> sys.stderr, "Finished reading the BAM files in %.2f seconds" % get_elapsed()
 print >> sys.stderr, "%d alignments across all %d BAM files" % (n_bam_aligns, len(bam_files))
-print >> sys.stderr, "\t%d discarded (%.2f%%) - not unique (NH != 1)" % (n_non_unique_bam_aligns, 100.*n_non_unique_bam_aligns/n_bam_aligns)
-print >> sys.stderr, "\t%d discarded (%.2f%%) - not exonic" % (n_non_exonic_bam_aligns, 100.*n_non_exonic_bam_aligns/n_bam_aligns)
-print >> sys.stderr, "\t%d discarded (%.2f%%) - read name found only once in its BAM file" % (n_singleton_reads, 100.*n_singleton_reads/n_bam_aligns)
-print >> sys.stderr, "\t%d discarded (%.2f%%) - read name found 3 times or more in its BAM file" % (n_multiple_hit_reads, 100.*n_multiple_hit_reads/n_bam_aligns)
+print >> sys.stderr, "\t%d discarded (%.2f%%) - singletons " % (n_singletons, 100.*n_singletons/n_bam_aligns)
+print >> sys.stderr, "\t%d discarded (%.2f%%) - multiple hits (NH != 1)" % (n_multiple_hits, 100.*n_multiple_hits/n_bam_aligns)
+print >> sys.stderr, "%d paired alignments" % n_paired_alignments
+print >> sys.stderr, "\t%d discarded (%.2f%%) - not exonic" % (n_non_exonic_bam_aligns, 100.*n_non_exonic_bam_aligns/n_paired_alignments)
 print >> sys.stderr, "%d reads after grouping the BAM Files" % (n_groups + n_different_genes)
 if not options.no_gtf_filter:
     if n_groups + n_different_genes:
