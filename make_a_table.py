@@ -201,6 +201,7 @@ def select_paired_alignments(alignment_iterator):
 # Output: iterator that has gene names too, but on a subset of the alignments
 # Description: Discards the reads that do not overlap any exons
 n_non_exonic_bam_aligns = 0
+n_different_genes_pair = 0
 def only_exonic_mappings(alignment_iterator):
     for (read_name, alignments) in alignment_iterator:
         ok = 0
@@ -215,8 +216,11 @@ def only_exonic_mappings(alignment_iterator):
         if ok < 2:
             global n_non_exonic_bam_aligns
             n_non_exonic_bam_aligns += 1
+        elif len(genes_seen) > 1:
+            global n_different_genes_pair
+            n_different_genes_pair += 1
         else:
-            yield (read_name, (genes_seen, alignments))
+            yield (read_name, (genes_seen.pop(), alignments))
 
 
 # Input: iterator (read_name, ...data...)
@@ -289,7 +293,7 @@ def select_same_gene(group_iterator):
         genes_seen = set()
         for pair in mappings:
             if pair is not None:
-                genes_seen.update(pair[0])
+                genes_seen.add(pair[0])
         if len(genes_seen) == 1:
             yield (read_name, genes_seen.pop(), mappings)
         else:
@@ -331,6 +335,7 @@ print >> sys.stderr, "\t%d discarded (%.2f%%) - singletons " % (n_singletons, 10
 print >> sys.stderr, "\t%d discarded (%.2f%%) - multiple hits (NH != 1)" % (n_multiple_hits, 100.*n_multiple_hits/n_bam_aligns)
 print >> sys.stderr, "%d paired alignments" % n_paired_alignments
 print >> sys.stderr, "\t%d discarded (%.2f%%) - not exonic" % (n_non_exonic_bam_aligns, 100.*n_non_exonic_bam_aligns/n_paired_alignments)
+print >> sys.stderr, "\t%d discarded (%.2f%%) - different genes" % (n_different_genes_pair, 100.*n_different_genes_pair/n_paired_alignments)
 print >> sys.stderr, "%d reads after grouping the BAM Files" % (n_groups + n_different_genes)
 if not options.no_gtf_filter:
     if n_groups + n_different_genes:
