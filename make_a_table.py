@@ -179,7 +179,6 @@ def select_paired_alignments(alignment_iterator):
         n_alignments = len(data[1])
         NH_values = [alignment[-2] for alignment in data[1]]
         if n_alignments == 1:
-            assert NH_values[0] == 1, data[0]
             n_singletons += 1
         elif n_alignments == 2:
             # Check that NH = 1 for both
