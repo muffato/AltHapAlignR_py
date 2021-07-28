@@ -258,10 +258,17 @@ def group_read_alignments(bam_parser):
 #          of the function is O(k). So in the end I'm merging the streams in O(k)
 n_groups = 0
 def merged_iterators(input_parsers):
-    current_reads = [parser.next() for parser in input_parsers]   # Assumes none of the iterators is empty
-    active_bam_parsers = len(input_parsers)
+    EMPTY_ITERATOR = (None,)
+    current_reads = []
+    active_bam_parsers = 0
+    for parser in input_parsers:
+        try:
+            current_reads.append( parser.next() )
+            active_bam_parsers += 1
+        except StopIteration:
+            current_reads.append( EMPTY_ITERATOR )
     while active_bam_parsers:
-        read_names = [cr[0] for cr in current_reads if cr[0] is not None]
+        read_names = [cr[0] for cr in current_reads if cr is not EMPTY_ITERATOR]
         next_read_name = min(read_names)
         global n_groups
         n_groups += 1
@@ -271,7 +278,7 @@ def merged_iterators(input_parsers):
                 try:
                     current_reads[i] = input_parsers[i].next()
                 except StopIteration:
-                    current_reads[i] = (None,)
+                    current_reads[i] = EMPTY_ITERATOR
                     active_bam_parsers -= 1
 
 
