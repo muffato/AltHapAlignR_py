@@ -367,9 +367,11 @@ print >> sys.stderr, "\t%d discarded (%.2f%%) - both not exonic" % (n_non_exonic
 print >> sys.stderr, "\t%d discarded (%.2f%%) - in different genes" % (n_different_genes_pair, 100.*n_different_genes_pair/n_paired_alignments)
 print >> sys.stderr, "\t%d kept (%.2f%%) - only one not exonic" % (n_partially_exonic, 100.*n_partially_exonic/n_paired_alignments)
 print >> sys.stderr, "%d reads after grouping the BAM Files" % n_groups
-if not options.no_gtf_filter:
+if n_groups and (not options.no_gtf_filter):
     print >> sys.stderr, "Gene name assignment statistics"
     print >> sys.stderr, "\t%d reads (%.2f%%): all BAM files agree" % (n_unique_groups, 100.*n_unique_groups/n_groups)
-    print >> sys.stderr, "\t%d reads (%.2f%%): multiple candidates, lowest NM score selected" % (n_best_groups, 100.*n_best_groups/n_groups)
-    print >> sys.stderr, "\t%d reads (%.2f%%): multiple candidates, tie - %d candidates listed (%.2f per read on average)" % (n_ambiguous_groups, 100.*n_ambiguous_groups/n_groups, n_lines-n_unique_groups-n_best_groups, float(n_lines-n_unique_groups-n_best_groups)/n_ambiguous_groups)
+    if n_best_groups:
+        print >> sys.stderr, "\t%d reads (%.2f%%): multiple candidates, lowest NM score selected" % (n_best_groups, 100.*n_best_groups/n_groups)
+    if n_ambiguous_groups:
+        print >> sys.stderr, "\t%d reads (%.2f%%): multiple candidates, tie - %d candidates listed (%.2f per read on average)" % (n_ambiguous_groups, 100.*n_ambiguous_groups/n_groups, n_lines-n_unique_groups-n_best_groups, float(n_lines-n_unique_groups-n_best_groups)/n_ambiguous_groups)
 
