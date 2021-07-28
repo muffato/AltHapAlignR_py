@@ -376,7 +376,7 @@ if not options.no_gtf_filter:
 print >> sys.stderr, "%d reads after grouping the BAM Files" % n_groups
 if n_groups and (not options.no_gtf_filter):
     print >> sys.stderr, "Gene name assignment statistics"
-    print >> sys.stderr, "\t%d reads (%.2f%%): all BAM files agree" % (n_unique_groups, 100.*n_unique_groups/n_groups)
+    print >> sys.stderr, "\t%d reads (%.2f%%): single candidate" % (n_unique_groups, 100.*n_unique_groups/n_groups)
     if n_best_groups:
         print >> sys.stderr, "\t%d reads (%.2f%%): multiple candidates, lowest NM score selected" % (n_best_groups, 100.*n_best_groups/n_groups)
     if n_ambiguous_groups:
