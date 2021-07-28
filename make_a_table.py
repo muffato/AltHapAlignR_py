@@ -349,7 +349,7 @@ bam_filters = [select_paired_alignments(group_read_alignments(extract_tags(bp)))
 if options.no_gtf_filter:
     it = merged_iterators(bam_filters)
 else:
-    headers = headers + ["gene_name"]
+    headers = headers + ["gene_name_confidence", "gene_name"]
     it = select_same_gene(merged_iterators([only_exonic_mappings(bf) for bf in bam_filters]))
 headers = headers + bam_files
 print "\t".join(headers)
