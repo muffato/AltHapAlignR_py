@@ -365,15 +365,16 @@ for data in it:
 
 ref_time = partial_time
 print >> sys.stderr, "Finished reading the BAM files in %.2f seconds" % get_elapsed()
-print >> sys.stderr, "%d alignments across all %d BAM files" % (n_bam_aligns, len(bam_files))
+print >> sys.stderr, "%d alignments in total across all %d BAM files" % (n_bam_aligns, len(bam_files))
 print >> sys.stderr, "\t%d discarded (%.2f%%) - singletons " % (n_singletons, 100.*n_singletons/n_bam_aligns)
 print >> sys.stderr, "\t%d discarded (%.2f%%) - multiple hits (NH != 1)" % (n_multiple_hits, 100.*n_multiple_hits/n_bam_aligns)
-print >> sys.stderr, "%d paired alignments" % n_paired_alignments
+print >> sys.stderr, "%d paired alignments in total" % n_paired_alignments
 if not options.no_gtf_filter:
     print >> sys.stderr, "\t%d discarded (%.2f%%) - both not exonic" % (n_non_exonic_bam_aligns, 100.*n_non_exonic_bam_aligns/n_paired_alignments)
     print >> sys.stderr, "\t%d discarded (%.2f%%) - in different genes" % (n_different_genes_pair, 100.*n_different_genes_pair/n_paired_alignments)
     print >> sys.stderr, "\t%d kept (%.2f%%) - only one not exonic" % (n_partially_exonic, 100.*n_partially_exonic/n_paired_alignments)
-print >> sys.stderr, "%d reads after grouping the BAM Files" % n_groups
+    print >> sys.stderr, "%d paired alignments in total after GTF filtering" % (n_paired_alignments-n_non_exonic_bam_aligns-n_different_genes_pair)
+print >> sys.stderr, "%d unique read names" % n_groups
 if n_groups and (not options.no_gtf_filter):
     print >> sys.stderr, "Gene name assignment statistics"
     print >> sys.stderr, "\t%d reads (%.2f%%): single candidate" % (n_unique_groups, 100.*n_unique_groups/n_groups)
