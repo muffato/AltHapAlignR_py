@@ -369,9 +369,10 @@ print >> sys.stderr, "%d alignments across all %d BAM files" % (n_bam_aligns, le
 print >> sys.stderr, "\t%d discarded (%.2f%%) - singletons " % (n_singletons, 100.*n_singletons/n_bam_aligns)
 print >> sys.stderr, "\t%d discarded (%.2f%%) - multiple hits (NH != 1)" % (n_multiple_hits, 100.*n_multiple_hits/n_bam_aligns)
 print >> sys.stderr, "%d paired alignments" % n_paired_alignments
-print >> sys.stderr, "\t%d discarded (%.2f%%) - both not exonic" % (n_non_exonic_bam_aligns, 100.*n_non_exonic_bam_aligns/n_paired_alignments)
-print >> sys.stderr, "\t%d discarded (%.2f%%) - in different genes" % (n_different_genes_pair, 100.*n_different_genes_pair/n_paired_alignments)
-print >> sys.stderr, "\t%d kept (%.2f%%) - only one not exonic" % (n_partially_exonic, 100.*n_partially_exonic/n_paired_alignments)
+if not options.no_gtf_filter:
+    print >> sys.stderr, "\t%d discarded (%.2f%%) - both not exonic" % (n_non_exonic_bam_aligns, 100.*n_non_exonic_bam_aligns/n_paired_alignments)
+    print >> sys.stderr, "\t%d discarded (%.2f%%) - in different genes" % (n_different_genes_pair, 100.*n_different_genes_pair/n_paired_alignments)
+    print >> sys.stderr, "\t%d kept (%.2f%%) - only one not exonic" % (n_partially_exonic, 100.*n_partially_exonic/n_paired_alignments)
 print >> sys.stderr, "%d reads after grouping the BAM Files" % n_groups
 if n_groups and (not options.no_gtf_filter):
     print >> sys.stderr, "Gene name assignment statistics"
