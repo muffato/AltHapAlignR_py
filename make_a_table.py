@@ -375,3 +375,6 @@ if n_groups and (not options.no_gtf_filter):
     if n_ambiguous_groups:
         print >> sys.stderr, "\t%d reads (%.2f%%): multiple candidates, tie - %d candidates listed (%.2f per read on average)" % (n_ambiguous_groups, 100.*n_ambiguous_groups/n_groups, n_lines-n_unique_groups-n_best_groups, float(n_lines-n_unique_groups-n_best_groups)/n_ambiguous_groups)
 
+#Return a non-zero code if we couldn't find any groups
+if not n_groups:
+    sys.exit(1)
