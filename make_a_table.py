@@ -331,10 +331,10 @@ def select_same_gene(group_iterator):
                 else:
                     genes_seen[gene_name] = NM_score
         if len(genes_seen) == 1:
+            status = 'unique'
+            best_genes = genes_seen.keys()
             global n_unique_groups
             n_unique_groups += 1
-            gene_name = genes_seen.keys()[0]
-            yield NamedEntry(read_group.name, ('unique', gene_name, [pair.data if pair and pair.name == gene_name else None for pair in read_group.data]))
         else:
             best_NM = min(genes_seen.values())
             best_genes = [gene_name for (gene_name, NM_score) in genes_seen.items() if NM_score == best_NM]
@@ -346,8 +346,8 @@ def select_same_gene(group_iterator):
                 global n_ambiguous_groups
                 n_ambiguous_groups += 1
                 status = 'ambiguous'
-            for gene_name in best_genes:
-                yield NamedEntry(read_group.name, (status, gene_name, [pair.data if pair and pair.name == gene_name else None for pair in read_group.data]))
+        for gene_name in best_genes:
+            yield NamedEntry(read_group.name, (status, gene_name, [pair.data if pair and pair.name == gene_name else None for pair in read_group.data]))
 
 
 def toString(entry):
