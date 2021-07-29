@@ -274,9 +274,17 @@ def merged_iterators(input_parsers):
             active_bam_parsers += 1
         except StopIteration:
             current_reads.append( EMPTY_ITERATOR )
+    last_read_name = None
     while active_bam_parsers:
         read_names = [cr.name for cr in current_reads if cr is not EMPTY_ITERATOR]
         next_read_name = min(read_names)
+        if last_read_name and (next_read_name < last_read_name):
+            not_sorted = []
+            for (i, cr) in enumerate(current_reads):
+                if cr.name == next_read_name:
+                    not_sorted.append(bam_files[i])
+            raise AssertionError("The BAM files %s are not sorted: read '%s' is after '%s'" % (", ".join(not_sorted), next_read_name, last_read_name))
+        last_read_name = next_read_name
         global n_groups
         n_groups += 1
         yield NamedEntry(next_read_name, [cr.data if cr.name == next_read_name else None for cr in current_reads])
