@@ -96,13 +96,16 @@ print >> sys.stderr, "\tbam_files:", bam_files
 print >> sys.stderr, "\toptions:", options
 print >> sys.stderr
 
-ref_time = time.time()
-def get_elapsed():
-    time_now = time.time()
-    global ref_time
-    elapsed = time_now - ref_time
-    ref_time = time_now
-    return elapsed
+class StopWatch:
+    def __init__(self):
+        self.ref_time = time.time()
+
+    def reset(self):
+        old_time = self.ref_time
+        self.ref_time = time.time()
+        return self.ref_time-old_time
+
+main_stopwatch = StopWatch()
 
 
 if not options.no_gtf_filter:
@@ -137,7 +140,7 @@ with gzip.GzipFile(gtf_file, 'r') if gtf_file.endswith('.gz') else open(gtf_file
             n_genes.add(name)
             n_exons += 1
 if not options.no_gtf_filter:
-    print >> sys.stderr, "Done (%.2f seconds): %d genes and %d exons" % (get_elapsed(), len(n_genes), n_exons)
+    print >> sys.stderr, "Done (%.2f seconds): %d genes and %d exons" % (main_stopwatch.reset(), len(n_genes), n_exons)
 
 
 
@@ -375,10 +378,9 @@ def toString(entry):
 
 print >> sys.stderr, "Opening the BAM files ...",
 bam_processors = map(BAMProcessor, bam_files)
-print >> sys.stderr, " Done (%.2f seconds)" % (get_elapsed(),)
+print >> sys.stderr, " Done (%.2f seconds)" % main_stopwatch.reset()
 
 last_n_bam_aligns = 0
-partial_time = ref_time
 print >> sys.stderr, "Reading the BAM files ..."
 headers = ["read_name"]
 if options.no_gtf_filter:
@@ -398,7 +400,7 @@ for entry in it:
     n_lines += 1
     if merged_processor.n_groups >= last_n_groups+10000:
         n_bam_aligns = merged_processor.stat_sum('n_bam_aligns')
-        print >> sys.stderr, "Found %d reads across all BAM files (%d alignments processed -- %.2f per second)" % (merged_processor.n_groups, n_bam_aligns, (n_bam_aligns-last_n_bam_aligns)/get_elapsed())
+        print >> sys.stderr, "Found %d reads across all BAM files (%d alignments processed -- %.2f per second)" % (merged_processor.n_groups, n_bam_aligns, (n_bam_aligns-last_n_bam_aligns)/main_stopwatch.reset())
         last_n_bam_aligns = n_bam_aligns
         last_n_groups = merged_processor.n_groups
 
@@ -407,8 +409,7 @@ attr_names = ['n_bam_aligns', 'n_singletons', 'n_multiple_hits', 'n_paired_align
 for stat_name in attr_names:
     setattr(merged_processor, stat_name, merged_processor.stat_sum(stat_name))
 
-ref_time = partial_time
-print >> sys.stderr, "Finished reading the BAM files in %.2f seconds" % get_elapsed()
+print >> sys.stderr, "Finished reading the BAM files in %.2f seconds" % main_stopwatch.reset()
 print >> sys.stderr, "%d alignments in total across all %d BAM files" % (merged_processor.n_bam_aligns, len(bam_files))
 print >> sys.stderr, "\t%d discarded (%.2f%%) - singletons " % (merged_processor.n_singletons, 100.*merged_processor.n_singletons/merged_processor.n_bam_aligns)
 print >> sys.stderr, "\t%d discarded (%.2f%%) - multiple hits (NH != 1)" % (merged_processor.n_multiple_hits, 100.*merged_processor.n_multiple_hits/merged_processor.n_bam_aligns)
