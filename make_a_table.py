@@ -110,42 +110,43 @@ class StopWatch:
 
 main_stopwatch = StopWatch()
 
+def load_genes(gtf_file):
+    if not options.no_gtf_filter:
+        print >> sys.stderr, "Loading the GTF file ... ",
+    gene_type_filter = re.compile('gene_type "?(%s)"?;' % options.gene_types.replace(",", "|")) if options.gene_types else None
+    transcript_type_filter = re.compile('transcript_type "?(%s)"?;' % options.transcript_types.replace(",", "|")) if options.transcript_types else None
+    gene_renames = dict(options.gene_renames) if options.gene_renames else {}
 
-if not options.no_gtf_filter:
-    print >> sys.stderr, "Loading the GTF file ... ",
-gene_type_filter = re.compile('gene_type "?(%s)"?;' % options.gene_types.replace(",", "|")) if options.gene_types else None
-transcript_type_filter = re.compile('transcript_type "?(%s)"?;' % options.transcript_types.replace(",", "|")) if options.transcript_types else None
-gene_renames = dict(options.gene_renames) if options.gene_renames else {}
+    gene_names = collections.defaultdict(myintervaltree)
+    n_genes = set()
+    n_exons = 0
+    if options.no_gtf_filter:
+        gtf_file = os.devnull
+    with gzip.GzipFile(gtf_file, 'r') if gtf_file.endswith('.gz') else open(gtf_file, 'r') as f:
+        for line in f:
+            t = line.strip().split("\t")
+            if gene_type_filter and not gene_type_filter.search(t[8]):
+                continue
+            if transcript_type_filter and not transcript_type_filter.search(t[8]):
+                continue
+            if t[2] == "exon":
+                if 'gene_name' not in t[8]:
+                    print >> sys.stderr, "Failed\nERROR: no 'gene_name' attribute for this exon:", line,
+                    sys.exit(1)
+                i1 = t[8].find('gene_name')
+                i2 = t[8].find(';', i1)
+                gn = t[8][i1+9:i2].strip().strip('"')
+                name = gene_renames.get(gn, gn)
+                start = int(t[3])
+                end = int(t[4])
+                gene_names[t[0]].add_data(start, end, name)
+                n_genes.add(name)
+                n_exons += 1
+    if not options.no_gtf_filter:
+        print >> sys.stderr, "Done (%.2f seconds): %d genes and %d exons" % (main_stopwatch.reset(), len(n_genes), n_exons)
+    return gene_names
 
-gene_names = collections.defaultdict(myintervaltree)
-n_genes = set()
-n_exons = 0
-if options.no_gtf_filter:
-    gtf_file = os.devnull
-with gzip.GzipFile(gtf_file, 'r') if gtf_file.endswith('.gz') else open(gtf_file, 'r') as f:
-    for line in f:
-        t = line.strip().split("\t")
-        if gene_type_filter and not gene_type_filter.search(t[8]):
-            continue
-        if transcript_type_filter and not transcript_type_filter.search(t[8]):
-            continue
-        if t[2] == "exon":
-            if 'gene_name' not in t[8]:
-                print >> sys.stderr, "Failed\nERROR: no 'gene_name' attribute for this exon:", line,
-                sys.exit(1)
-            i1 = t[8].find('gene_name')
-            i2 = t[8].find(';', i1)
-            gn = t[8][i1+9:i2].strip().strip('"')
-            name = gene_renames.get(gn, gn)
-            start = int(t[3])
-            end = int(t[4])
-            gene_names[t[0]].add_data(start, end, name)
-            n_genes.add(name)
-            n_exons += 1
-if not options.no_gtf_filter:
-    print >> sys.stderr, "Done (%.2f seconds): %d genes and %d exons" % (main_stopwatch.reset(), len(n_genes), n_exons)
-
-
+gene_names = load_genes(gtf_file)
 
 # Input: BAM read with tag list, and tag name
 # Output: the value of the tag
