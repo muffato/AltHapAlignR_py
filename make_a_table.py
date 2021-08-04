@@ -439,7 +439,7 @@ if merged_processor.n_groups and (not options.no_gtf_filter):
 
 if options.log_file:
     with open(options.log_file, 'w') as fh:
-        print >> fh, '\t'.join(['# filename' + attr_names])
+        print >> fh, '\t'.join(['# filename'] + attr_names)
         for (filename, bam_processor) in zip(bam_files, bam_processors):
             print >> fh, '\t'.join([filename] + [str(getattr(bam_processor, attr_name)) for attr_name in attr_names])
 
