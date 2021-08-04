@@ -408,7 +408,7 @@ for entry in it:
     n_lines += 1
     if merged_processor.n_groups >= last_n_groups+10000:
         n_bam_aligns = merged_processor.stat_sum('n_bam_aligns')
-        print >> sys.stderr, "Found %d reads across all BAM files (%d alignments processed -- %.2f per second)" % (merged_processor.n_groups, n_bam_aligns, (n_bam_aligns-last_n_bam_aligns)/main_stopwatch.reset())
+        print >> sys.stderr, "Found %d reads across all BAM files (%d alignments processed -- %.2f per second)" % (merged_processor.n_groups, n_bam_aligns, (n_bam_aligns-last_n_bam_aligns)/bam_reading_stopwatch.reset())
         last_n_bam_aligns = n_bam_aligns
         last_n_groups = merged_processor.n_groups
 
