@@ -76,6 +76,9 @@ parser.add_option("-t", "--transcript_types", dest = 'transcript_types', default
         help = 'Comma-separated list of transcript biotypes to use for the exon-overlap filtering [default: %default]. Use an empty string for no filtering')
 parser.add_option("-n", "--no_gtf_filter", action = 'store_true',
         help = 'Do not use a GTF file to filter the reads. The command line arguments are then expected to all be BAM files.')
+parser.add_option("-s", "--strict", action = 'store_true', default = False,
+        help = 'Use to select the strict mode, which discards paired reads when one read alf is not in an exon')
+
 (options, args) = parser.parse_args()
 
 if options.no_gtf_filter:
@@ -266,6 +269,8 @@ class BAMProcessor:
             else:
                 if ok == 1:
                     self.n_partially_exonic += 1
+                    if options.strict:
+                        continue
                 else:
                     self.n_fully_exonic += 1
                 yield NamedEntry(aligned_read.name, NamedEntry(genes_seen.pop(), aligned_read.data))
@@ -404,7 +409,7 @@ for entry in it:
         last_n_bam_aligns = n_bam_aligns
         last_n_groups = merged_processor.n_groups
 
-BAMProcessor.n_paired_alignments_after_filter = property(lambda self: self.n_paired_alignments-self.n_non_exonic_bam_aligns-self.n_different_genes_pair)
+BAMProcessor.n_paired_alignments_after_filter = property(lambda self: self.n_paired_alignments-self.n_non_exonic_bam_aligns-self.n_different_genes_pair-(self.n_partially_exonic if options.strict else 0))
 attr_names = ['n_bam_aligns', 'n_singletons', 'n_multiple_hits', 'n_paired_alignments', 'n_non_exonic_bam_aligns', 'n_different_genes_pair', 'n_partially_exonic', 'n_fully_exonic', 'n_paired_alignments_after_filter', 'n_gene_match']
 for stat_name in attr_names:
     setattr(merged_processor, stat_name, merged_processor.stat_sum(stat_name))
@@ -417,7 +422,7 @@ print >> sys.stderr, "%d paired alignments in total" % merged_processor.n_paired
 if not options.no_gtf_filter:
     print >> sys.stderr, "\t%d discarded (%.2f%%) - both not exonic" % (merged_processor.n_non_exonic_bam_aligns, 100.*merged_processor.n_non_exonic_bam_aligns/merged_processor.n_paired_alignments)
     print >> sys.stderr, "\t%d discarded (%.2f%%) - multiple genes hit" % (merged_processor.n_different_genes_pair, 100.*merged_processor.n_different_genes_pair/merged_processor.n_paired_alignments)
-    print >> sys.stderr, "\t%d kept (%.2f%%) - only one not exonic" % (merged_processor.n_partially_exonic, 100.*merged_processor.n_partially_exonic/merged_processor.n_paired_alignments)
+    print >> sys.stderr, "\t%d %s (%.2f%%) - only one not exonic" % (merged_processor.n_partially_exonic, 'discarded' if options.strict else 'kept', 100.*merged_processor.n_partially_exonic/merged_processor.n_paired_alignments)
     print >> sys.stderr, "\t%d kept (%.2f%%) - both exonic in same gene" % (merged_processor.n_fully_exonic, 100.*merged_processor.n_fully_exonic/merged_processor.n_paired_alignments)
     print >> sys.stderr, "%d paired alignments in total after GTF filtering" % merged_processor.n_paired_alignments_after_filter
 print >> sys.stderr, "%d unique read names" % merged_processor.n_groups
