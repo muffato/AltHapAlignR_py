@@ -78,6 +78,8 @@ parser.add_option("-n", "--no_gtf_filter", action = 'store_true',
         help = 'Do not use a GTF file to filter the reads. The command line arguments are then expected to all be BAM files.')
 parser.add_option("-s", "--strict", action = 'store_true', default = False,
         help = 'Use to select the strict mode, which discards paired reads when one read alf is not in an exon')
+parser.add_option("-l", "--log", nargs = 1, dest = 'log_file', action = 'store',
+        help = "Do not include paired reads when one read is not in an exon")
 
 (options, args) = parser.parse_args()
 
@@ -434,6 +436,13 @@ if merged_processor.n_groups and (not options.no_gtf_filter):
         print >> sys.stderr, "\t%d reads (%.2f%%): multiple candidates, lowest NM score selected" % (merged_processor.n_best_groups, 100.*merged_processor.n_best_groups/merged_processor.n_groups)
     if merged_processor.n_ambiguous_groups:
         print >> sys.stderr, "\t%d reads (%.2f%%): multiple candidates, tie - %d candidates listed (%.2f per read on average)" % (merged_processor.n_ambiguous_groups, 100.*merged_processor.n_ambiguous_groups/merged_processor.n_groups, n_lines-merged_processor.n_unique_groups-merged_processor.n_best_groups, float(n_lines-merged_processor.n_unique_groups-merged_processor.n_best_groups)/merged_processor.n_ambiguous_groups)
+
+if options.log_file:
+    with open(options.log_file, 'w') as fh:
+        print >> fh, '\t'.join(['# filename' + attr_names])
+        for (filename, bam_processor) in zip(bam_files, bam_processors):
+            print >> fh, '\t'.join([filename] + [str(getattr(bam_processor, attr_name)) for attr_name in attr_names])
+
 
 #Return a non-zero code if we couldn't find any groups
 if not merged_processor.n_groups:
