@@ -2,6 +2,7 @@
 
 import collections
 import gzip
+import operator
 import optparse
 import os
 import re
@@ -138,9 +139,6 @@ with gzip.GzipFile(gtf_file, 'r') if gtf_file.endswith('.gz') else open(gtf_file
 if not options.no_gtf_filter:
     print >> sys.stderr, "Done (%.2f seconds): %d genes and %d exons" % (get_elapsed(), len(n_genes), n_exons)
 
-print >> sys.stderr, "Opening the BAM files ...",
-bam_parsers = [pybam.read(bam_file, ['sam_qname', 'sam_rname', 'sam_pos1', 'sam_cigar_list', 'sam_tags_list']) for bam_file in bam_files]
-print >> sys.stderr, " Done (%.2f seconds)" % (get_elapsed(),)
 
 
 # Input: BAM read with tag list, and tag name
@@ -157,146 +155,6 @@ def get_tag_value(read, tag):
     return values[0]
 
 
-# Input: BAM iterator with tag list
-# Output: BAM iterator with selected tag values (NH and NM)
-# Description: Extract the NH and NM values from the BAM alignments
-n_bam_aligns = 0
-def extract_tags(bam_parser):
-    for read in bam_parser:
-        global n_bam_aligns
-        n_bam_aligns += 1
-        NH_value = get_tag_value(read, 'NH')
-        NM_value = get_tag_value(read, 'NM')
-        yield NamedEntry(read[0], ReadAlignment(read[1], read[2], read[3], NH_value, NM_value))
-
-
-# Input: iterator over paired alignments
-# Output: iterator over a subset of the input
-# Description: Discards the alignments that are not uniquely mapped pairs,
-#              i.e. are singletons or have multiple hits / don't have NH:i:1.
-n_singletons = 0
-n_paired_alignments = 0
-n_multiple_hits = 0
-def select_paired_alignments(alignment_iterator):
-    global n_singletons
-    global n_paired_alignments
-    global n_multiple_hits
-    for aligned_read in alignment_iterator:
-        n_alignments = len(aligned_read.data)
-        NH_values = [alignment.NH_value for alignment in aligned_read.data]
-        if n_alignments == 1:
-            n_singletons += 1
-        elif n_alignments == 2:
-            # Check that NH = 1 for both
-            if NH_values[0] != 1:
-                assert NH_values[1] != 1
-                # Could be classified as singletons too
-                n_multiple_hits += 2
-            else:
-                assert NH_values[1] == 1
-                n_paired_alignments += 1
-                yield aligned_read
-        else:
-            for NH_value in NH_values:
-                assert NH_value != 1
-            n_multiple_hits += n_alignments
-
-
-# Input: iterator over paired alignments
-# Output: iterator that has gene names too, but on a subset of the alignments
-# Description: Discards the reads that do not overlap any exons
-n_non_exonic_bam_aligns = 0
-n_different_genes_pair = 0
-n_partially_exonic = 0
-def only_exonic_mappings(alignment_iterator):
-    for aligned_read in alignment_iterator:
-        ok = 0
-        genes_seen = set()
-        for aln in aligned_read.data:
-            if aln.chrom_name in gene_names:
-                end_pos = aln.start_pos + mapping_length(aln.cigar_list) - 1
-                names_here = gene_names[aln.chrom_name].data_overlapping(aln.start_pos, end_pos)
-                if names_here:
-                    genes_seen.update(names_here)
-                    ok += 1
-        if ok == 0:
-            global n_non_exonic_bam_aligns
-            n_non_exonic_bam_aligns += 1
-        elif len(genes_seen) > 1:
-            global n_different_genes_pair
-            n_different_genes_pair += 1
-        else:
-            if ok == 1:
-                global n_partially_exonic
-                n_partially_exonic += 1
-            yield NamedEntry(aligned_read.name, NamedEntry(genes_seen.pop(), aligned_read.data))
-
-
-# Input: iterator (read_name, ...data...)
-# Output: iterator (read_name, [(...data1...), (...data2...)])
-# Description: Group consecutive pairs of reads that have the same name.
-#              This assumes that the input BAM file is sorted.
-def group_read_alignments(bam_parser):
-    try:
-        read = next(bam_parser)
-        last_reads = [read.data]
-        last_read_name = read.name
-    except StopIteration:
-        # Nothing could be read
-        return
-    for read in bam_parser:
-        this_read_name = read.name
-        # Same read name as last time
-        if last_read_name != this_read_name:
-            yield NamedEntry(last_read_name, last_reads)
-            last_reads = []
-            last_read_name = this_read_name
-        last_reads.append(read.data)
-    yield NamedEntry(last_read_name, last_reads)
-
-
-# Input: list of iterators (read_name, data)
-# Output: iterator (read_name, [data1 | None, data2 | None, ...])
-# Description: For each read name, groups the reads from each BAM file,
-#              assuming that the files are sorted by read name
-# Remarks: This is similar to a k-way merge algorithm. Although the merge
-#          itself can be achieved in O(log(k)) in theory, my implementations
-#          did not provide any improvements, especially because the output
-#          of the function is O(k). So in the end I'm merging the streams in O(k)
-n_groups = 0
-def merged_iterators(input_parsers):
-    EMPTY_ITERATOR = NamedEntry(None, None)
-    current_reads = []
-    active_bam_parsers = 0
-    for parser in input_parsers:
-        try:
-            current_reads.append( parser.next() )
-            active_bam_parsers += 1
-        except StopIteration:
-            current_reads.append( EMPTY_ITERATOR )
-    last_read_name = None
-    while active_bam_parsers:
-        read_names = [cr.name for cr in current_reads if cr is not EMPTY_ITERATOR]
-        next_read_name = min(read_names)
-        if last_read_name and (next_read_name < last_read_name):
-            not_sorted = []
-            for (i, cr) in enumerate(current_reads):
-                if cr.name == next_read_name:
-                    not_sorted.append(bam_files[i])
-            raise AssertionError("The BAM files %s are not sorted: read '%s' is after '%s'" % (", ".join(not_sorted), next_read_name, last_read_name))
-        last_read_name = next_read_name
-        global n_groups
-        n_groups += 1
-        yield NamedEntry(next_read_name, [cr.data if cr.name == next_read_name else None for cr in current_reads])
-        for (i, cr) in enumerate(current_reads):
-            if cr.name == next_read_name:
-                try:
-                    current_reads[i] = input_parsers[i].next()
-                except StopIteration:
-                    current_reads[i] = EMPTY_ITERATOR
-                    active_bam_parsers -= 1
-
-
 # Input: CIGAR alignment already parsed to a list of (number, character)
 # Output: integer
 # Description: Computes the length of the alignment on the genome
@@ -310,44 +168,193 @@ def mapping_length(cigar_list):
     return s
 
 
-# Input: iterator (read_name, [data1 | None, data2 | None, ...])
-# Output: iterator (read_name, [data1 | None, data2 | None, ...])
-# Description: For each group of reads, finds the gene names on the genome
-#              (using the alignment) and only keeps the groups that map to
-#              a single gene name.
-n_unique_groups = 0
-n_best_groups = 0
-n_ambiguous_groups = 0
-def select_same_gene(group_iterator):
-    for read_group in group_iterator:
-        genes_seen = {}
-        for pair in read_group.data:
-            if pair is not None:
-                gene_name = pair.name
-                NM_score = sum(alignment.NM_value for alignment in pair.data)
-                if gene_name in genes_seen:
-                    if NM_score < genes_seen[gene_name]:
-                        genes_seen[gene_name] = NM_score
-                else:
-                    genes_seen[gene_name] = NM_score
-        if len(genes_seen) == 1:
-            status = 'unique'
-            best_genes = genes_seen.keys()
-            global n_unique_groups
-            n_unique_groups += 1
-        else:
-            best_NM = min(genes_seen.values())
-            best_genes = [gene_name for (gene_name, NM_score) in genes_seen.items() if NM_score == best_NM]
-            if len(best_genes) == 1:
-                global n_best_groups
-                n_best_groups += 1
-                status = 'best'
+# Holds all the BAM processing functions (generators) and binds them together
+class BAMProcessor:
+
+    def __init__(self, bam_file):
+        self.bam_parser = pybam.read(bam_file, ['sam_qname', 'sam_rname', 'sam_pos1', 'sam_cigar_list', 'sam_tags_list'])
+        self.n_bam_aligns = 0
+        self.n_singletons = 0
+        self.n_paired_alignments = 0
+        self.n_multiple_hits = 0
+        self.n_non_exonic_bam_aligns = 0
+        self.n_different_genes_pair = 0
+        self.n_partially_exonic = 0
+        self.n_fully_exonic = 0
+        self.n_gene_match = 0
+
+
+    # Input: BAM iterator with tag list
+    # Output: BAM iterator with selected tag values (NH and NM)
+    # Description: Extract the NH and NM values from the BAM alignments
+    def extract_tags(self):
+        for read in self.bam_parser:
+            self.n_bam_aligns += 1
+            NH_value = get_tag_value(read, 'NH')
+            NM_value = get_tag_value(read, 'NM')
+            yield NamedEntry(read[0], ReadAlignment(read[1], read[2], read[3], NH_value, NM_value))
+
+
+    # Input: iterator (read_name, ...data...)
+    # Output: iterator (read_name, [(...data1...), (...data2...)])
+    # Description: Group consecutive pairs of reads that have the same name.
+    #              This assumes that the input BAM file is sorted.
+    def group_read_alignments(self):
+        last_reads = []
+        last_read_name = None
+        for read in self.extract_tags():
+            this_read_name = read.name
+            if last_read_name:
+                if last_read_name != this_read_name:
+                    yield NamedEntry(last_read_name, last_reads)
+                    last_reads = []
+                    last_read_name = this_read_name
             else:
-                global n_ambiguous_groups
-                n_ambiguous_groups += 1
-                status = 'ambiguous'
-        for gene_name in best_genes:
-            yield NamedEntry(read_group.name, (status, gene_name, [pair.data if pair and pair.name == gene_name else None for pair in read_group.data]))
+                last_read_name = this_read_name
+            last_reads.append(read.data)
+        if last_read_name:
+            yield NamedEntry(last_read_name, last_reads)
+
+
+    # Input: iterator over paired alignments
+    # Output: iterator over a subset of the input
+    # Description: Discards the alignments that are not uniquely mapped pairs,
+    #              i.e. are singletons or have multiple hits / don't have NH:i:1.
+    def select_paired_alignments(self):
+        for aligned_read in self.group_read_alignments():
+            n_alignments = len(aligned_read.data)
+            NH_values = [alignment.NH_value for alignment in aligned_read.data]
+            if n_alignments == 1:
+                self.n_singletons += 1
+            elif n_alignments == 2:
+                # Check that NH = 1 for both
+                if NH_values[0] != 1:
+                    assert NH_values[1] != 1
+                    # Could be classified as singletons too
+                    self.n_multiple_hits += 2
+                else:
+                    assert NH_values[1] == 1
+                    self.n_paired_alignments += 1
+                    yield aligned_read
+            else:
+                for NH_value in NH_values:
+                    assert NH_value != 1
+                self.n_multiple_hits += n_alignments
+
+
+    # Input: iterator over paired alignments
+    # Output: iterator that has gene names too, but on a subset of the alignments
+    # Description: Discards the reads that do not overlap any exons
+    def only_exonic_mappings(self):
+        for aligned_read in self.select_paired_alignments():
+            ok = 0
+            genes_seen = set()
+            for aln in aligned_read.data:
+                if aln.chrom_name in gene_names:
+                    end_pos = aln.start_pos + mapping_length(aln.cigar_list) - 1
+                    names_here = gene_names[aln.chrom_name].data_overlapping(aln.start_pos, end_pos)
+                    if names_here:
+                        genes_seen.update(names_here)
+                        ok += 1
+            if ok == 0:
+                self.n_non_exonic_bam_aligns += 1
+            elif len(genes_seen) > 1:
+                self.n_different_genes_pair += 1
+            else:
+                if ok == 1:
+                    self.n_partially_exonic += 1
+                else:
+                    self.n_fully_exonic += 1
+                yield NamedEntry(aligned_read.name, NamedEntry(genes_seen.pop(), aligned_read.data))
+
+class BAMMergedProcessor:
+    def __init__(self, bam_processors, generator_name):
+        self.bam_processors = bam_processors
+        self.bam_iterators = map(operator.methodcaller(generator_name), bam_processors)
+        self.n_groups = 0
+        self.n_unique_groups = 0
+        self.n_best_groups = 0
+        self.n_ambiguous_groups = 0
+
+    def stat_sum(self, attr_name):
+        return sum(map(operator.attrgetter(attr_name), self.bam_processors))
+
+
+    # Input: list of iterators (read_name, data)
+    # Output: iterator (read_name, [data1 | None, data2 | None, ...])
+    # Description: For each read name, groups the reads from each BAM file,
+    #              assuming that the files are sorted by read name
+    # Remarks: This is similar to a k-way merge algorithm. Although the merge
+    #          itself can be achieved in O(log(k)) in theory, my implementations
+    #          did not provide any improvements, especially because the output
+    #          of the function is O(k). So in the end I'm merging the streams in O(k)
+    def merged_iterators(self):
+        EMPTY_ITERATOR = NamedEntry(None, None)
+        current_reads = []
+        active_bam_parsers = 0
+        for parser in self.bam_iterators:
+            try:
+                current_reads.append( parser.next() )
+                active_bam_parsers += 1
+            except StopIteration:
+                current_reads.append( EMPTY_ITERATOR )
+        last_read_name = None
+        while active_bam_parsers:
+            read_names = [cr.name for cr in current_reads if cr is not EMPTY_ITERATOR]
+            next_read_name = min(read_names)
+            if last_read_name and (next_read_name < last_read_name):
+                not_sorted = []
+                for (i, cr) in enumerate(current_reads):
+                    if cr.name == next_read_name:
+                        not_sorted.append(bam_files[i])
+                raise AssertionError("The BAM files %s are not sorted: read '%s' is after '%s'" % (", ".join(not_sorted), next_read_name, last_read_name))
+            last_read_name = next_read_name
+            self.n_groups += 1
+            yield NamedEntry(next_read_name, [cr.data if cr.name == next_read_name else None for cr in current_reads])
+            for (i, cr) in enumerate(current_reads):
+                if cr.name == next_read_name:
+                    try:
+                        current_reads[i] = self.bam_iterators[i].next()
+                    except StopIteration:
+                        current_reads[i] = EMPTY_ITERATOR
+                        active_bam_parsers -= 1
+
+
+    # Input: iterator (read_name, [data1 | None, data2 | None, ...])
+    # Output: iterator (read_name, [data1 | None, data2 | None, ...])
+    # Description: For each group of reads, finds the gene names on the genome
+    #              (using the alignment) and only keeps the groups that map to
+    #              a single gene name.
+    def select_same_gene(self):
+        for read_group in self.merged_iterators():
+            genes_seen = {}
+            for pair in read_group.data:
+                if pair is not None:
+                    gene_name = pair.name
+                    NM_score = sum(alignment.NM_value for alignment in pair.data)
+                    if gene_name in genes_seen:
+                        if NM_score < genes_seen[gene_name]:
+                            genes_seen[gene_name] = NM_score
+                    else:
+                        genes_seen[gene_name] = NM_score
+            if len(genes_seen) == 1:
+                status = 'unique'
+                best_genes = genes_seen.keys()
+                self.n_unique_groups += 1
+            else:
+                best_NM = min(genes_seen.values())
+                best_genes = [gene_name for (gene_name, NM_score) in genes_seen.items() if NM_score == best_NM]
+                if len(best_genes) == 1:
+                    self.n_best_groups += 1
+                    status = 'best'
+                else:
+                    self.n_ambiguous_groups += 1
+                    status = 'ambiguous'
+            for gene_name in best_genes:
+                for (bp, pair) in zip(self.bam_processors, read_group.data):
+                    if pair and pair.name == gene_name:
+                        bp.n_gene_match += 1
+                yield NamedEntry(read_group.name, (status, gene_name, [pair.data if pair and pair.name == gene_name else None for pair in read_group.data]))
 
 
 def toString(entry):
@@ -366,48 +373,61 @@ def toString(entry):
     return "\t".join(line)
 
 
+print >> sys.stderr, "Opening the BAM files ...",
+bam_processors = map(BAMProcessor, bam_files)
+print >> sys.stderr, " Done (%.2f seconds)" % (get_elapsed(),)
+
 last_n_bam_aligns = 0
 partial_time = ref_time
 print >> sys.stderr, "Reading the BAM files ..."
 headers = ["read_name"]
-bam_filters = [select_paired_alignments(group_read_alignments(extract_tags(i, bp))) for (i, bp) in enumerate(bam_parsers)]
 if options.no_gtf_filter:
-    it = merged_iterators(bam_filters)
+    merged_processor = BAMMergedProcessor(bam_processors, 'select_paired_alignments')
+    it = merged_processor.merged_iterators()
 else:
     headers = headers + ["gene_name_confidence", "gene_name"]
-    it = select_same_gene(merged_iterators([only_exonic_mappings(i, bf) for (i, bf) in enumerate(bam_filters)]))
+    merged_processor = BAMMergedProcessor(bam_processors, 'only_exonic_mappings')
+    it = merged_processor.select_same_gene()
 headers = headers + bam_files
 print "\t".join(headers)
 last_n_groups = 0
 n_lines = 0
+bam_reading_stopwatch = StopWatch()
 for entry in it:
     print toString(entry)
     n_lines += 1
-    if n_groups >= last_n_groups+10000:
-        print >> sys.stderr, "Found %d reads across all BAM files (%d alignments processed -- %.2f per second)" % (n_groups, n_bam_aligns, (n_bam_aligns-last_n_bam_aligns)/get_elapsed())
+    if merged_processor.n_groups >= last_n_groups+10000:
+        n_bam_aligns = merged_processor.stat_sum('n_bam_aligns')
+        print >> sys.stderr, "Found %d reads across all BAM files (%d alignments processed -- %.2f per second)" % (merged_processor.n_groups, n_bam_aligns, (n_bam_aligns-last_n_bam_aligns)/get_elapsed())
         last_n_bam_aligns = n_bam_aligns
-        last_n_groups = n_groups
+        last_n_groups = merged_processor.n_groups
+
+BAMProcessor.n_paired_alignments_after_filter = property(lambda self: self.n_paired_alignments-self.n_non_exonic_bam_aligns-self.n_different_genes_pair)
+attr_names = ['n_bam_aligns', 'n_singletons', 'n_multiple_hits', 'n_paired_alignments', 'n_non_exonic_bam_aligns', 'n_different_genes_pair', 'n_partially_exonic', 'n_fully_exonic', 'n_paired_alignments_after_filter', 'n_gene_match']
+for stat_name in attr_names:
+    setattr(merged_processor, stat_name, merged_processor.stat_sum(stat_name))
 
 ref_time = partial_time
 print >> sys.stderr, "Finished reading the BAM files in %.2f seconds" % get_elapsed()
-print >> sys.stderr, "%d alignments in total across all %d BAM files" % (n_bam_aligns, len(bam_files))
-print >> sys.stderr, "\t%d discarded (%.2f%%) - singletons " % (n_singletons, 100.*n_singletons/n_bam_aligns)
-print >> sys.stderr, "\t%d discarded (%.2f%%) - multiple hits (NH != 1)" % (n_multiple_hits, 100.*n_multiple_hits/n_bam_aligns)
-print >> sys.stderr, "%d paired alignments in total" % n_paired_alignments
+print >> sys.stderr, "%d alignments in total across all %d BAM files" % (merged_processor.n_bam_aligns, len(bam_files))
+print >> sys.stderr, "\t%d discarded (%.2f%%) - singletons " % (merged_processor.n_singletons, 100.*merged_processor.n_singletons/merged_processor.n_bam_aligns)
+print >> sys.stderr, "\t%d discarded (%.2f%%) - multiple hits (NH != 1)" % (merged_processor.n_multiple_hits, 100.*merged_processor.n_multiple_hits/merged_processor.n_bam_aligns)
+print >> sys.stderr, "%d paired alignments in total" % merged_processor.n_paired_alignments
 if not options.no_gtf_filter:
-    print >> sys.stderr, "\t%d discarded (%.2f%%) - both not exonic" % (n_non_exonic_bam_aligns, 100.*n_non_exonic_bam_aligns/n_paired_alignments)
-    print >> sys.stderr, "\t%d discarded (%.2f%%) - in different genes" % (n_different_genes_pair, 100.*n_different_genes_pair/n_paired_alignments)
-    print >> sys.stderr, "\t%d kept (%.2f%%) - only one not exonic" % (n_partially_exonic, 100.*n_partially_exonic/n_paired_alignments)
-    print >> sys.stderr, "%d paired alignments in total after GTF filtering" % (n_paired_alignments-n_non_exonic_bam_aligns-n_different_genes_pair)
-print >> sys.stderr, "%d unique read names" % n_groups
-if n_groups and (not options.no_gtf_filter):
+    print >> sys.stderr, "\t%d discarded (%.2f%%) - both not exonic" % (merged_processor.n_non_exonic_bam_aligns, 100.*merged_processor.n_non_exonic_bam_aligns/merged_processor.n_paired_alignments)
+    print >> sys.stderr, "\t%d discarded (%.2f%%) - multiple genes hit" % (merged_processor.n_different_genes_pair, 100.*merged_processor.n_different_genes_pair/merged_processor.n_paired_alignments)
+    print >> sys.stderr, "\t%d kept (%.2f%%) - only one not exonic" % (merged_processor.n_partially_exonic, 100.*merged_processor.n_partially_exonic/merged_processor.n_paired_alignments)
+    print >> sys.stderr, "\t%d kept (%.2f%%) - both exonic in same gene" % (merged_processor.n_fully_exonic, 100.*merged_processor.n_fully_exonic/merged_processor.n_paired_alignments)
+    print >> sys.stderr, "%d paired alignments in total after GTF filtering" % merged_processor.n_paired_alignments_after_filter
+print >> sys.stderr, "%d unique read names" % merged_processor.n_groups
+if merged_processor.n_groups and (not options.no_gtf_filter):
     print >> sys.stderr, "Gene name assignment statistics"
-    print >> sys.stderr, "\t%d reads (%.2f%%): single candidate" % (n_unique_groups, 100.*n_unique_groups/n_groups)
-    if n_best_groups:
-        print >> sys.stderr, "\t%d reads (%.2f%%): multiple candidates, lowest NM score selected" % (n_best_groups, 100.*n_best_groups/n_groups)
-    if n_ambiguous_groups:
-        print >> sys.stderr, "\t%d reads (%.2f%%): multiple candidates, tie - %d candidates listed (%.2f per read on average)" % (n_ambiguous_groups, 100.*n_ambiguous_groups/n_groups, n_lines-n_unique_groups-n_best_groups, float(n_lines-n_unique_groups-n_best_groups)/n_ambiguous_groups)
+    print >> sys.stderr, "\t%d reads (%.2f%%): single candidate" % (merged_processor.n_unique_groups, 100.*merged_processor.n_unique_groups/merged_processor.n_groups)
+    if merged_processor.n_best_groups:
+        print >> sys.stderr, "\t%d reads (%.2f%%): multiple candidates, lowest NM score selected" % (merged_processor.n_best_groups, 100.*merged_processor.n_best_groups/merged_processor.n_groups)
+    if merged_processor.n_ambiguous_groups:
+        print >> sys.stderr, "\t%d reads (%.2f%%): multiple candidates, tie - %d candidates listed (%.2f per read on average)" % (merged_processor.n_ambiguous_groups, 100.*merged_processor.n_ambiguous_groups/merged_processor.n_groups, n_lines-merged_processor.n_unique_groups-merged_processor.n_best_groups, float(n_lines-merged_processor.n_unique_groups-merged_processor.n_best_groups)/merged_processor.n_ambiguous_groups)
 
 #Return a non-zero code if we couldn't find any groups
-if not n_groups:
+if not merged_processor.n_groups:
     sys.exit(1)
